@@ -1,0 +1,24 @@
+[Unit]
+Description=Ices Source (This client sends the MP3 stream to be rebroadcast by the Icecast server)
+
+After=network.target
+After=systemd-user-sessions.service
+After=network-online.target
+#After=graphical.target
+
+[Service]
+Type=simple
+ExecStart=-/usr/local/bin/LaunchIces.sh 
+#note that above we use =- to supress an error: https://serverfault.com/questions/680033/reset-ingnore-non-zero-exit-code-with-fleet-systemd
+
+TimeoutStartSec=0
+User=pi
+Group=pi
+KillMode=process
+#KillMode=process https://www.freedesktop.org/software/systemd/man/systemd.kill.html
+
+[Install]
+#WantedBy=graphical.target
+WantedBy=multi-user.target
+
+

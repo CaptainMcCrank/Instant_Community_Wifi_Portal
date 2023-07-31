@@ -1,0 +1,17 @@
+---
+py_version: 3.8.0
+threads: 4
+temp_folder: /tmp
+# ***BE SURE TO INCREMENT THE FOLLOWING 3 VARIABLES IF YOU ARE UPGRADING THE HOTSPOT
+root_playbook_dir:  /home/pi/Playbooks/InstantCommunityWifiPortal
+os_info_path: /etc/os-release
+int_count: "{{ ansible_interfaces | count }}"
+docker_host: "{{ lookup('ansible.builtin.env', 'DOCKER_HOST') }}"
+new_password: "ChangeDefaultPWD3331333"
+hostname: "thepub.local"
+wifi_ip: "10.10.42.1"
+version:
+  Build: CommunityWifiPortal
+  BuildDate: "06_08_23"
+  Ver: 0.1
+  Author: p@mccannabanana.com

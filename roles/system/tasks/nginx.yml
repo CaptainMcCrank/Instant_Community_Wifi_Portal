@@ -1,0 +1,31 @@
+---
+     
+    - name: Install Nginx package
+      apt:
+        name: nginx
+        state: present
+
+    - name: Generate self-signed SSL certificate
+      command:  |
+        sudo openssl req -x509 -nodes -days 365 -newkey rsa:2048
+        -keyout /etc/ssl/private/nginx-selfsigned.key
+        -out /etc/ssl/certs/nginx-selfsigned.crt
+        -subj '/C=US/ST=Washington/L=Seattle/CN={{ hostname }}'
+      args:
+        creates: /etc/ssl/certs/nginx-selfsigned.crt  # Skips the task if the certificate already exists
+
+    - name: Generate Diffie-Hellman parameters (takes a couple of minutes)
+      command: sudo openssl dhparam -out /etc/ssl/certs/dhparam.pem 2048
+
+    - name: Update server_name in Nginx configuration
+      replace:
+        path: /etc/nginx/sites-available/default
+        regexp: 'ansibledest\.local'
+        replace: "{{ hostname }}"
+
+    - name: Copy nginx configuration files over to target
+      synchronize:
+        src: "{{ root_playbook_dir }}/etc/nginx/"
+        dest: /etc/nginx
+        recursive: yes
+     

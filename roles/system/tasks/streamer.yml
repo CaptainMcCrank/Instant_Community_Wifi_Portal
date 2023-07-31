@@ -1,0 +1,417 @@
+---
+   - name: Copy icecast streaming prerequistes libvorbis-1.3.7
+     synchronize:
+       src: "{{ root_playbook_dir }}/pi/libvorbis-1.3.7"
+       dest: /home/pi/.
+     tags: 
+     - streamer
+     - icecast
+     - ices
+
+   - name: Copy icecast streaming prerequistes libshout-2.4.5
+     synchronize:
+       src: "{{ root_playbook_dir }}/pi/libshout-2.4.5"
+       dest: /home/pi/.
+     tags: 
+     - streamer
+     - icecast
+     - ices
+
+   - name: Copy icecast streaming prerequistes libogg-1.3.5  
+     synchronize:
+       src: "{{ root_playbook_dir }}/pi/libogg-1.3.5"
+       dest: /home/pi/.
+     become_user: pi   
+     tags: 
+     - streamer
+     - icecast
+     - ices
+
+   - name: Copy icecast streaming prerequistes ices-2.0.3
+     synchronize:
+       src: "{{ root_playbook_dir }}/pi/ices-2.0.3"
+       dest: /home/pi/.
+     tags: 
+     - streamer
+     - icecast
+     - ices
+
+   - name: Recursively change ownership of streming prerequisites
+     ansible.builtin.file:
+       path: "{{ item }}"
+       state: directory
+       recurse: yes
+       owner: pi
+       group: pi
+       mode: 0700
+     loop:
+         - /home/pi/libvorbis-1.3.7
+         - /home/pi/libshout-2.4.5
+         - /home/pi/libogg-1.3.5 
+         - /home/pi/ices-2.0.3
+
+   - name: Copy systemd timers & services files for ices and device registration
+     synchronize:
+       src: "{{ root_playbook_dir }}/pi/config/systemd"
+       dest: /home/pi/.config/.
+     tags: 
+     - streamer
+
+     - DeviceRegistration
+
+   - name: Copy /etc/default/icecast2 file
+     copy:
+       src: "{{ root_playbook_dir }}/etc/default/icecast2"
+       dest: /etc/default/icecast2
+       owner: root
+       group: root
+       mode: 0744
+     tags: 
+     - streamer
+     - icecast
+
+   - name: Install icecast2
+     apt:
+       name: icecast2
+       state: present
+       update_cache: true
+     tags: 
+     - streamer
+     - icecast
+
+
+   - name: install libxml2-dev (Needed for ices streamcasting )
+     apt:
+       name: libxml2-dev
+       state: present
+       update_cache: true
+
+   - name: configure libogg
+     become_user: pi
+     command: chdir=/home/pi/libogg-1.3.5/ ./configure
+     tags: 
+     - streamer
+     - Icecast
+
+   - name: Install automake (needed for compiling streaming software)
+     apt:
+       name: automake 
+       state: present
+       update_cache: true
+     tags: streamer
+
+   - name: Install ices2 
+     apt:
+       name: ices2 
+       state: present
+       update_cache: true
+     tags: streamer
+
+   - name: make libogg
+     become_user: pi
+     make:
+       chdir: /home/pi/libogg-1.3.5
+     tags: streamer
+
+   - name: install libogg
+     command: chdir=/home/pi/libogg-1.3.5/ make install
+     tags: streamer
+
+   - name: configure libvorbis
+     become_user: pi
+     command: chdir=/home/pi/libvorbis-1.3.7/ ./configure
+     tags: streamer
+
+   - name: make libvorbis
+     become_user: pi
+     make:
+       chdir: /home/pi/libvorbis-1.3.7
+     tags: streamer
+
+   - name: install libvorbis
+     command: chdir=/home/pi/libvorbis-1.3.7/ make install
+     tags: streamer
+
+   - name: configure libshout-2.4.5
+     become_user: pi
+     command: chdir=/home/pi/libshout-2.4.5/ ./configure
+     tags: streamer
+
+   - name: make libshout-2.4.5
+     become_user: pi
+     make:
+       chdir: /home/pi/libshout-2.4.5
+     tags: streamer
+
+   - name: install libshout-2.4.5
+     command: chdir=/home/pi/libshout-2.4.5/ make install
+     tags: streamer
+
+   - name: configure ices-2.0.3
+     become_user: pi
+     command: chdir=/home/pi/ices-2.0.3/ ./configure
+     tags: streamer
+
+   - name: make ices-2.0.3
+     become_user: pi
+     make:
+       chdir: /home/pi/ices-2.0.3
+     tags: streamer
+
+   - name: Start icecast
+     command: /etc/init.d/icecast2 start
+     tags: 
+     - streamer
+     - icecast
+     - ices    
+
+   - name: Create /var/log/ices directory
+     file: path=/var/log/ices state=directory mode=0774 owner=icecast2 group=icecast
+     tags: 
+     - streamer
+     - icecast
+     - ices
+
+   - name: Create /etc/ices2 directory
+     file: path=/etc/ices2 state=directory mode=0774 owner=icecast2 group=icecast
+     tags: 
+     - streamer
+     - icecast
+     - ices
+
+   - name: Create a symbolic from /var/www/hostname/offgrid/Girl_Talk_All_Day to /home/pi/Podcasts/ which is where the music is.  This tells ices2 where music files are hosted.  
+     ansible.builtin.file:
+       src: "/var/www/{{ hostname }}/offgrid/Girl_Talk_All_Day/"
+       dest: /etc/ices2/music
+       owner: pi
+       group: icecast
+       state: link
+     tags: 
+     - streamer
+     - icecast
+     - ices
+
+   - name: Copy ices-playlist.xml (configures podcast source client to connect to streaming server)
+     copy:
+       src: "{{ root_playbook_dir }}/etc/ices2/ices-playlist.xml"
+       dest: /etc/ices2/ices-playlist.xml
+       owner: root
+       group: icecast
+       mode: 0660
+     tags: 
+     - streamer
+     - icecast
+     - ices
+
+   - name: Copy /etc/icecast2/icecast.xml (configures streaming server that broadcasts source client's content)
+     copy:
+       src: "{{ root_playbook_dir }}/etc/icecast2/icecast.xml"
+       dest: /etc/icecast2/icecast.xml
+       owner: root
+       group: icecast
+       mode: 0654 #<- Gotta figure out how to get this to 750.
+     tags: 
+     - streamer
+     - icecast
+     - ices
+
+   - name: Copy /etc/ices2/playlist.txt (placeholder playlist that loops through episodes.  I need to script this.)
+     copy:
+       src: "{{ root_playbook_dir }}/etc/ices2/playlist.txt"
+       dest: /etc/ices2/playlist.txt
+       owner: root
+       group: icecast
+       mode: 0774
+     tags: 
+     - streamer
+     - ices
+
+#Update Icecast urls:
+   - name: /etc/icecast2
+     replace:
+       path: /etc/icecast2/icecast.xml
+       regexp: 'na-internet-in-a-box.itm'
+       replace: "{{ hostname }}"
+
+   - name: Start icecast2 
+     command: /etc/init.d/icecast2 start
+     tags: 
+     - streamer
+     - icecast
+
+   - name: Enable icecast2 
+     command: systemctl enable icecast2.service
+     tags: 
+     - streamer
+     - icecast  
+
+   - name: wget the ices 0.4 client (Deprecated version that supports MP3s)
+     command: wget -O /tmp/ices-0.4.tar.gz http://downloads.us.xiph.org/releases/ices/ices-0.4.tar.gz
+     tags: 
+     - streamer
+     - Ices  
+
+   - name: Extract ices into /tmp/ices-0.4
+     ansible.builtin.unarchive:
+       remote_src: yes
+       src: /tmp/ices-0.4.tar.gz
+       dest: /tmp
+     tags: 
+     - streamer
+     - Ices  
+
+   - name: Install lame
+     apt:
+       name: lame
+       state: present
+       update_cache: true
+     tags: streamer 
+
+   - name: Create /var/ices directory
+     file: path=/var/ices state=directory mode=0755 owner=pi group=pi
+     tags: 
+     - streamer
+     - Ices  
+
+#./configure --prefix=/var/ices --with-lame-libraries=/usr/bin/lame ;make ;make install
+
+   - name: "configure ices0.4"
+     become_user: pi
+     command: ./configure --prefix=/var/ices --with-lame-libraries=/usr/bin/lame 
+     args:
+       chdir: "/tmp/ices-0.4"
+     tags: 
+     - streamer
+     - Ices  
+
+   - name: make ices
+     become_user: pi
+     make:
+       chdir: /tmp/ices-0.4
+     tags: 
+     - streamer
+     - Ices  
+
+   - name: Run 'install' target as root for ices
+     make:
+       chdir: /tmp/ices-0.4
+       target: install
+     tags: 
+     - streamer
+     - Ices  
+
+   - name: Copy /var/ices/etc/ices.conf
+     copy:
+       src: "{{ root_playbook_dir }}/var/ices/etc/ices.conf"
+       dest: /var/ices/etc/ices.conf
+       owner: pi
+       group: pi
+       mode: 0744
+     tags: 
+     - streamer
+     - Ices  
+
+   - name: Copy LaunchIces.sh script
+     copy:
+       src: "{{ root_playbook_dir }}/usr/local/bin/LaunchIces.sh"
+       dest: /usr/local/bin/LaunchIces.sh
+       owner: pi
+       group: pi
+       mode: 0744
+     tags: 
+     - streamer
+     - Ices  
+
+   - name: Copy OwnerChange.sh timer files
+     synchronize:
+       src: "{{ root_playbook_dir }}/etc/systemd/system/{{item}}"
+       dest: /etc/systemd/system/
+     loop: 
+       - chown.service
+       - chown.timer
+     tags: streamer
+
+   - name: Enable the OwnerChange.sh service which tweaks the group ownership of /tmp/hostapd.log and /tmp/dnsmasq.log to www-data.  This enables read access to the appropriate logs  
+     command: systemctl enable chown.service
+     tags: 
+     - streamer
+
+   - name: Enable the OwnerChange.sh timer resets ownership one minute after boot
+     command: systemctl enable chown.timer
+     tags: 
+     - streamerx
+
+   - name: Copy ices systemd launcher files
+     synchronize:
+       src: "{{ root_playbook_dir }}/etc/systemd/system/{{item}}"
+       dest: /etc/systemd/system/
+     loop: 
+       - ices_source.service
+       - ices_source.timer
+     tags: streamer
+
+   - name: enable ices_source.service & ices_source.timer
+     command: "{{ item }}"
+     with_items:
+     - systemctl enable ices_source.service
+     - systemctl enable ices_source.timer  
+
+   - name: start ices_source.service
+     command: "{{ item }}"
+     with_items:
+     - systemctl start ices_source.service
+     - systemctl start ices_source.timer
+     tags: 
+     - streamer
+     - Ices  
+
+   - name: Create a symbolic link for the web access log
+     ansible.builtin.file:
+       src: /var/log/nginx/access.log
+       dest: /var/www/html/logs/{{ hostname }}.access.log
+       owner: www-data
+       group: www-data
+       state: link
+     tags: streamer
+
+   - name: Touch the /tmp/hostapd.log so we can create a symbolic link
+     ansible.builtin.file:
+       path: /tmp/hostapd.log
+       state: touch
+       mode: u=rw,g=r,o=r
+     tags: streamer
+
+   - name: Create a symbolic link for the hostapd log file
+     ansible.builtin.file:
+       src: /tmp/hostapd.log
+       dest: /var/www/html/logs/hostapd.log
+       owner: www-data
+       group: www-data
+       state: link
+     tags: streamer
+
+   - name: Touch the /tmp/hostapd.log so we can create a symbolic link
+     ansible.builtin.file:
+       path: /tmp/dnsmasq.log
+       state: touch
+       mode: u=rw,g=r,o=r
+     tags: streamer
+
+   - name: Create a symbolic link for the dnsmasq.log file
+     ansible.builtin.file:
+       src: /tmp/dnsmasq.log
+       dest: /var/www/html/logs/dnsmasq.log
+       owner: www-data
+       group: www-data
+       state: link
+     tags: streamer
+
+   - name: adding existing user pi to group icecast
+     user:
+       name: pi
+       groups: icecast
+       append: yes
+     tags: 
+     - streamer
+     - icecast
+     - web

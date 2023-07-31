@@ -1,0 +1,44 @@
+
+   - name: Copy LXDE-pi file that autolaunches chrome 
+     copy:
+       src: "{{ root_playbook_dir }}/pi/config/lxsession/LXDE-pi/autostart"
+       dest: /etc/xdg/lxsession/LXDE-pi/autostart
+       owner: pi
+       group: pi
+       mode: 0644
+     tags: os_config_files
+
+   - name: Copy LXDE-pi file that does not autostart chrome 
+     copy:
+       src: "{{ root_playbook_dir }}/pi/config/lxsession/LXDE-pi/autostart_ui_off"
+       dest: /etc/xdg/lxsession/.autostart_ui_off
+       owner: pi
+       group: pi
+       mode: 0644
+     tags: os_config_files
+
+   - name: Copy chromium settings
+     copy:
+       src: "{{ root_playbook_dir }}/pi/config/chromium/"
+       dest: /home/pi/.config/chromium/
+       owner: pi
+       group: pi
+       mode: 0600
+     tags: web_ui
+
+   - name: Update /home/pi/.config/chromium/Bookmarks
+     replace:
+       path: /home/pi/.config/chromium/Default/Bookmarks
+       regexp: '33.33.33.33'
+       replace: "{{ hostname }}"
+
+   - name: /home/pi/.config/chromium/Default/Preferences
+     replace:
+       path: /home/pi/.config/chromium/Default/Preferences
+       regexp: "{{ item }}"
+       replace: "{{ hostname }}"
+     loop:
+       - '33.33.33.33'
+       - 'na-internet-in-a-box.itm'
+       - 'localhost'
+

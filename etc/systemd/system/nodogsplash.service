@@ -1,0 +1,10 @@
+[Unit]
+Description=Service that launches Nodogsplash captive portal
+
+[Service]
+Type=forking
+ExecStart=/usr/bin/nodogsplash
+User=root
+
+[Install]
+WantedBy=multi-user.target

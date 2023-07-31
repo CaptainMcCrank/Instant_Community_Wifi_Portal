@@ -1,0 +1,68 @@
+---
+   - name: final cleanup /etc/apt/sources.list
+     command: mv /tmp/apt/sources.list.post /etc/apt/sources.list
+     tags: AnsibleHousekeeping 
+
+   - name: final cleanup /etc/apt/sources.list.d/raspi.list
+     command: mv /tmp/apt/sources.list.d/raspi.list.post /etc/apt/sources.list.d/raspi.list
+     tags: AnsibleHousekeeping 
+
+   - name: wget the Filesystem resizer
+     command: wget -O /etc/init.d/resize2fs_once https://raw.githubusercontent.com/RPi-Distro/pi-gen/master/stage2/01-sys-tweaks/files/resize2fs_once
+     tags: AnsibleHousekeeping 
+
+   - name: chmod +x the filesystem resizer
+     file:
+       path: /etc/init.d/resize2fs_once
+       owner: root
+       group: root
+       # when specifying mode using octal numbers, add a leading 0
+       mode: 0755
+     tags: os_config_files
+
+   - name: add quiet init=/usr/lib/raspi-config/init_resize.sh to /boot/cmdline.txt
+     lineinfile:
+       path: /boot/cmdline.txt
+       line: quiet init=/usr/lib/raspi-config/init_resize.sh
+       insertafter: EOF
+     tags: os_config_files
+
+   - name: sudo systemctl enable resize2fs_once
+     command: systemctl enable resize2fs_once
+     tags: os_config_files
+
+   - name: Change password for user pi
+     user:
+       name: pi
+       password: "{{ new_password | password_hash('sha512') }}"
+
+   - name: Clear the log files! 
+     command: bash -c "/usr/local/bin/ClearLogs.sh"
+     tags: 
+     - os_config_files
+     - AnsibleHousekeeping
+
+   - name: Set a hostname
+     ansible.builtin.hostname:
+       name: "{{ hostname }}"
+
+   - name: Copy /etc/hosts file #Likely needs updates if I change interfaces
+     copy:
+       src: "{{ root_playbook_dir }}/etc/hosts"
+       dest: /etc/hosts
+       owner: root
+       group: root
+       mode: 0755
+     tags: os_config_files
+
+   - name: Update /etc/hosts file
+     lineinfile:
+       path: /etc/hosts
+       backrefs: yes
+       regexp: '^(127.0.0.1\tlocalhost)(\s+.*|$)'
+       line: '\1 {{ hostname }}'
+
+   - name: Append /etc/hosts file
+     lineinfile:
+       path: /etc/hosts
+       line: '{{ wifi_ip }} {{ hostname }} {{ hostname }}'

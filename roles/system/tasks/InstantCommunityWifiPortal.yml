@@ -1,0 +1,42 @@
+---
+   - name: Install  9base, git, golang, curl, libimage-exiftool-perl packages
+     apt:
+       name:
+         - 9base
+         - git
+         - golang
+         - curl
+         - libimage-exiftool-perl
+       state: present
+
+   - name: Create directory
+     file:
+       path: /usr/local/go
+       state: directory
+       owner: root
+       group: root
+       mode: 0755
+
+   - name: Set GOPATH environment variable & install cgd
+     shell:
+       cmd: 'GOPATH=/usr/local/go go get github.com/uriel/cgd'
+
+   - name: Create systemd unit file
+     copy:
+       dest: /etc/systemd/system/cgd.service
+       content: |
+         [Unit]
+         Description=CGD Service
+         After=network.target
+
+         [Service]
+         ExecStart=/usr/local/go/bin/cgd -f -c /var/www/{{ hostname }}/bin/werc.rc >/dev/null 2>&1
+
+         [Install]
+          WantedBy=default.target
+
+   - name: Enable and start cgd service
+     systemd:
+       name: cgd
+       state: started
+       enabled: yes

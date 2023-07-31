@@ -1,0 +1,30 @@
+---
+#https://snapcraft.io/docs/installing-snap-on-raspbian
+#https://certbot.eff.org/instructions?ws=nginx&os=debianbuster      
+    - name: Installing snapd
+      apt:
+        name: snapd
+        state: present
+
+    - name: Reboot the system
+      reboot:
+        reboot_timeout: 300
+        pre_reboot_delay: 0
+        post_reboot_delay: 30
+
+    - name: Install core
+      community.general.snap:
+        name:
+          - core
+
+    - name: Update snap core
+      command: snap refresh core
+
+    - name: Install certbot
+      community.general.snap:
+        name: certbot
+        classic: true
+
+    - name: Create symbolic link for certbot
+      command:
+        cmd: ln -s /snap/bin/certbot /usr/bin/certbot

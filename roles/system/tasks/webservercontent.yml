@@ -1,0 +1,103 @@
+---
+
+   - name: Create /var/www/html directory
+     file: path=/var/www/html state=directory mode=0755 owner=www-data group=www-data
+     tags: 
+       - webserver
+       - icecast
+       - streamer
+
+   - name: chmoding /var/www/html/
+     file:
+       path: /var/www/html/
+       owner: www-data
+       group: www-data
+       mode: 0755
+       recurse: yes
+     tags: web
+
+   - name: adding existing user pi to groups www-data
+     user:
+       name: pi
+       groups: www-data
+       append: yes
+     tags: 
+     - streamer
+     - icecast
+     - web
+
+   - name: Copy www files over to target
+     synchronize:
+       src: "{{ root_playbook_dir }}/var/www/"
+       dest: /var/www/
+       recursive: yes
+     tags: 
+     - streamer
+     - icecast
+     - ices
+    
+   - name: Rename the lower tier Tokume website directory
+     command: "mv /var/www/ansibledest.local/sites/ansibledest.local /var/www/ansibledest.local/sites/{{ hostname }}"
+
+   - name: Rename the Tokumei website directory
+     command: "mv /var/www/ansibledest.local /var/www/{{ hostname }}"
+
+   - name: Modify /etc/nginx/sites-available/default 
+     replace:
+       path: /etc/nginx/sites-available/default
+       regexp: 'ansibledest.local'
+       replace: '{{ hostname }}'
+
+   - name: Edit the index.html file with the 
+     lineinfile:
+       path: /var/www/html/index.html
+       insertbefore: </body>
+       line: "<li>Build Version: {{ version['Ver'] }}</a></li>"
+     tags: 
+     - os_config_files
+     - DeviceRegistration
+
+   - name: Increment /var/www/html/index.html contents to reflect build version
+     lineinfile:
+       path: /var/www/html/index.html
+       regexp: '<li>Build Version: 0.0</a></li>'
+       line: "<li>Build Version: {{ version['Ver'] }}</a></li>"
+     tags: 
+     - os_config_files
+     - DeviceRegistration
+
+   - name: Increment /var/www/html/index.html contents to reflect build Name
+     lineinfile:
+       path: /var/www/html/index.html
+       regexp: '<li>Build Name: 0.0</a></li>'
+       line: "<li>Build Name: {{ version['Build'] }}</a></li>"
+     tags: 
+     - os_config_files
+     - DeviceRegistration
+
+   - name: Increment /var/www/html/index.html contents to reflect build Date
+     lineinfile:
+       path: /var/www/html/index.html
+       regexp: '<li>Build Date: 0.0</a></li>'
+       line: "<li>Build Date: {{ version['BuildDate'] }}</a></li>"
+     tags: 
+     - os_config_files
+     - DeviceRegistration
+
+   - name: Increment /var/www/html/index.html contents to reflect build Name
+     lineinfile:
+       path: /var/www/html/index.html
+       insertbefore: </body>
+       line: "<li>Build Name: {{ version['Build'] }}</a></li>"
+     tags: 
+     - os_config_files
+     - DeviceRegistration
+
+   - name: Increment /var/www/html/index.html contents to reflect build Date
+     lineinfile:
+       path: /var/www/html/index.html
+       insertbefore: </body>
+       line: "<li>Build Date: {{ version['BuildDate'] }}</a></li>"
+     tags: 
+     - os_config_files
+     - DeviceRegistration

@@ -1,0 +1,12 @@
+/etc/ices2/music/01-Girl_Talk-Oh_No.mp3
+/etc/ices2/music/02-Girl_Talk-Let_It_Out.mp3
+/etc/ices2/music/03-Girl_Talk-That_s_Right.mp3
+/etc/ices2/music/04-Girl_Talk-Jump_on_Stage.mp3
+/etc/ices2/music/05-Girl_Talk-This_Is_the_Remix.mp3
+/etc/ices2/music/06-Girl_Talk-On_and_On.mp3
+/etc/ices2/music/07-Girl_Talk-Get_It_Get_It.mp3
+/etc/ices2/music/08-Girl_Talk-Down_for_the_Count.mp3
+/etc/ices2/music/09-Girl_Talk-Make_Me_Wanna.mp3
+/etc/ices2/music/10-Girl_Talk-Steady_Shock.mp3
+/etc/ices2/music/11-Girl_Talk-Triple_Double.mp3
+/etc/ices2/music/12-Girl_Talk-Every_Day.mp3

@@ -1,0 +1,40 @@
+   - name: Install ufw
+     apt:
+       name: ufw
+       state: present
+       update_cache: true
+
+   - name: Block SSH on WiFi interface
+     command: ufw deny in on wlan0 to any port 22
+
+   - name: Allow SSH on Ethernet interface
+     command: ufw allow in on eth0 to any port 22
+
+#   - name: Allow 80 & 443 on Wlan interface
+#     command: ufw allow in on wlan0 to any port 80,443
+
+   - name: Allow HTTP and HTTPS on Ethernet and wifi interface
+     ufw:
+       rule: allow
+       src: any
+       interface: "{{ item }}"
+       direction: in
+       port: 53,80,443,8000
+       proto: tcp
+       state: enabled
+     loop:
+       - eth0
+       - wlan0
+
+   - name: Allow DNS
+     ufw:
+       rule: allow
+       src: any
+       interface: wlan0
+       direction: in
+       port: '53'
+       proto: udp
+       state: enabled
+
+   - name: Enable UFW
+     command: ufw --force enable

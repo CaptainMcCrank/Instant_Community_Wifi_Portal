@@ -1,0 +1,10 @@
+[Unit]
+Description=A job to tweak the logfile ownership for hostapd.log and dnsmasq.log to www-data 
+
+[Service]
+Type=simple
+User=root
+ExecStart=/bin/OwnerChange.sh
+
+[Install]
+WantedBy=multi-user.target

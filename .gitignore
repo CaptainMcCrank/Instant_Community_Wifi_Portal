@@ -1,0 +1,8 @@
+.DS_Store
+.AppleDouble
+*.swp
+*.pdf
+*.mp3
+*.zip
+node_modules/
+dist/
