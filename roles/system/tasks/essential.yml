@@ -1,4 +1,12 @@
 ---
+   - name: Check if target OS is Raspberry Pi OS Bookworm
+     ansible.builtin.fail:
+       msg: "This playbook is designed to run on Raspberry Pi OS Bookworm. The target system is running {{ ansible_distribution }} {{ ansible_distribution_version }}"
+     when: >
+       ansible_distribution != 'Debian' or
+       ansible_distribution_version is not defined or
+       not ansible_distribution_version.startswith('12')
+
    - name: If an environment variable named "DOCKER_HOST" is set on the playbook controller, then print the value.
      ansible.builtin.debug:
        msg: "'{{ docker_host }}' is the DOCKER_HOST environment variable."

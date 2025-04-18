@@ -1,172 +1,176 @@
----
+- name: Copy /etc/hostapd/CaptivePortalAPD configuration that is used to set a
+    forwarding hotspot with no password #Likely needs updates if I change interfaces
+  ansible.builtin.copy:
+    src: '{{ root_playbook_dir }}/etc/hostapd/CaptivePortalAPD.conf'
+    dest: /etc/hostapd/CaptivePortalAPD.conf
+    owner: root
+    group: root
+    mode: 744
+  tags: hotspot
 
-   - name: Copy /etc/hostapd/CaptivePortalAPD configuration that is used to set a forwarding hotspot with no password #Likely needs updates if I change interfaces
-     ansible.builtin.copy:
-       src: "{{ root_playbook_dir }}/etc/hostapd/CaptivePortalAPD.conf"
-       dest: /etc/hostapd/CaptivePortalAPD.conf
-       owner: root
-       group: root
-       mode: 0744
-     tags: hotspot
+- name: Copy the /etc/nftables.conf file redirects all port 80 & 443 traffic to
+    the portal
+  copy:
+    src: '{{ root_playbook_dir }}/etc/nftables.conf'
+    dest: /etc/nftables.conf
+    owner: root
+    group: root
+    mode: 755
+  tags:
+    - os_config_files
+    - streamer
 
-   - name: Copy the /etc/nftables.conf file redirects all port 80 & 443 traffic to the portal
-     copy:
-       src: "{{ root_playbook_dir }}/etc/nftables.conf"
-       dest: /etc/nftables.conf
-       owner: root
-       group: root
-       mode: 0755
-     tags: 
-     - os_config_files
-     - streamer
+- name: Setup port 80 forwarding
+  command: iptables -t nat -A PREROUTING -i wlan0 -p tcp --dport 80 -j DNAT
+    --to-destination {{ wifi_ip }}:80
+  tags:
+    - os_config_files
+    - streamer
+    - CaptivePortal
 
-   - name: Setup port 80 forwarding  
-     command: 'iptables -t nat -A PREROUTING -i wlan0 -p tcp --dport 80 -j DNAT --to-destination {{ wifi_ip }}:80' 
-     tags: 
-     - os_config_files
-     - streamer
-     - CaptivePortal
+- name: Setup port 443 forwarding
+  command: iptables -t nat -A PREROUTING -i wlan0 -p tcp --dport 443 -j DNAT
+    --to-destination {{ wifi_ip }}:80
+  tags:
+    - os_config_files
+    - streamer
+    - CaptivePortal
 
-   - name: Setup port 443 forwarding   
-     command: 'iptables -t nat -A PREROUTING -i wlan0 -p tcp --dport 443 -j DNAT --to-destination {{ wifi_ip }}:80' 
-     tags: 
-     - os_config_files
-     - streamer
-     - CaptivePortal
+- name: Enable NAT masquerading
+  command: iptables -t nat -A POSTROUTING -j MASQUERADE
+  tags:
+    - os_config_files
+    - streamer
+    - CaptivePortal
 
-   - name: Enable NAT masquerading
-     command: iptables -t nat -A POSTROUTING -j MASQUERADE
-     tags: 
-     - os_config_files
-     - streamer
-     - CaptivePortal
+- name: Block 67 on the eth0 interface (keeps device from fucking up lan traffic)
+  command: iptables -A INPUT -i eth0 -p udp --dport 67 -j DROP
+  tags:
+    - os_config_files
+    - streamer
+    - CaptivePortal
 
-   - name: Block 67 on the eth0 interface (keeps device from fucking up lan traffic)  
-     command:  iptables -A INPUT -i eth0 -p udp --dport 67 -j DROP
-     tags: 
-     - os_config_files
-     - streamer
-     - CaptivePortal
+- name: Block 53 dns on the eth0 interface (keeps device from fucking up lan traffic)
+  command: iptables -A INPUT -i eth0 -p tcp --dport 53 -j DROP
+  tags:
+    - os_config_files
+    - streamer
+    - CaptivePortal
 
-   - name: Block 53 dns on the eth0 interface (keeps device from fucking up lan traffic)  
-     command:  iptables -A INPUT -i eth0 -p tcp --dport 53 -j DROP
-     tags: 
-     - os_config_files
-     - streamer
-     - CaptivePortal
+- name: save iptables rules
+  command: iptables-save -f /etc/iptables/rules.v4
+  tags: CaptivePortal
 
-   - name: save iptables rules 
-     command:  iptables-save -f /etc/iptables/rules.v4
-     tags: CaptivePortal
+- name: NoDogSplash dependencies
+  apt:
+    name:
+      - devscripts
+      - libmicrohttpd-dev
+      - debhelper
+  tags:
+    - nodogsplash
+    - streamer
 
-   - name: "NoDogSplash dependencies"
-     apt:
-       name: ['devscripts', 'libmicrohttpd-dev', 'debhelper']
-     tags:          
-     - nodogsplash
-     - streamer
+- name: Clone of NoDogSplash
+  ansible.builtin.git:
+    repo: https://github.com/nodogsplash/nodogsplash.git
+    dest: /home/pi/nodogsplash
+    #single_branch: yes
+    #version: master
+  tags:
+    - nodogsplash
+    - streamer
 
-   - name: Clone of NoDogSplash
-     ansible.builtin.git:
-       repo: https://github.com/nodogsplash/nodogsplash.git
-       dest: /home/pi/nodogsplash
-       #single_branch: yes
-       #version: master
-     tags:          
-     - nodogsplash
-     - streamer
+- name: make nodogsplash
+  become_user: root
+  make:
+    chdir: /home/pi/nodogsplash
+  tags:
+    - nodogsplash
+    - streamer
 
-   - name: make nodogsplash
-     become_user: root
-     make:
-       chdir: /home/pi/nodogsplash
-     tags:          
-     - nodogsplash
-     - streamer
+- name: install nodogsplash
+  become_user: root
+  command: chdir=/home/pi/nodogsplash make install
+  tags: streamer
 
-   - name: install nodogsplash
-     become_user: root
-     command: chdir=/home/pi/nodogsplash make install
-     tags: streamer
+- name: Copy nodogsplash config settings
+  copy:
+    src: '{{ root_playbook_dir }}/etc/nodogsplash/nodogsplash.conf'
+    dest: /etc/nodogsplash/nodogsplash.conf
+    owner: root
+    group: root
+    mode: 644
+  tags: nodogsplash
 
-   - name: Copy nodogsplash config settings
-     copy:
-       src: "{{ root_playbook_dir }}/etc/nodogsplash/nodogsplash.conf"
-       dest: /etc/nodogsplash/nodogsplash.conf
-       owner: root
-       group: root
-       mode: 0644
-     tags: nodogsplash
+- name: Tune Nodogsplash
+  replace:
+    path: /etc/nodogsplash/htdocs/status.html
+    regexp: '{{ item }}'
+    replace: '{{ hostname }}'
+  loop:
+    - 33.33.33.33
+    - na-internet-in-a-box.itm
 
-   - name: Tune Nodogsplash 
-     replace:
-       path: /etc/nodogsplash/htdocs/status.html
-       regexp: '{{ item }}'
-       replace: '{{ hostname }}'
-     loop:
-       - '33.33.33.33'
-       - 'na-internet-in-a-box.itm'
-
-   - name: Tune Nodogsplash 2
-     replace:
-       path: /etc/nodogsplash/htdocs/status.html
-       regexp: '{{ item }}'
-       replace: '{{ hostname }}'
-     loop:
-       - '33.33.33.33'
-       - 'na-internet-in-a-box.itm'
+- name: Tune Nodogsplash 2
+  replace:
+    path: /etc/nodogsplash/htdocs/status.html
+    regexp: '{{ item }}'
+    replace: '{{ hostname }}'
+  loop:
+    - 33.33.33.33
+    - na-internet-in-a-box.itm
 #
 
 
-   - name: Copy nodogsplash html stuff
-     synchronize:
-       src: "{{ root_playbook_dir }}/etc/nodogsplash/htdocs"
-       dest: /etc/nodogsplash/.
-     tags: nodogsplash
+- name: Copy nodogsplash html stuff
+  synchronize:
+    src: '{{ root_playbook_dir }}/etc/nodogsplash/htdocs'
+    dest: /etc/nodogsplash/.
+  tags: nodogsplash
 
-   - name: Copy nodogsplash service file
-     copy:
-       src: "{{ root_playbook_dir }}/etc/systemd/system/nodogsplash.service"
-       dest: /etc/systemd/system/nodogsplash.service
-       owner: root
-       group: root
-       mode: 0744
-     tags: nodogsplash
+- name: Copy nodogsplash service file
+  copy:
+    src: '{{ root_playbook_dir }}/etc/systemd/system/nodogsplash.service'
+    dest: /etc/systemd/system/nodogsplash.service
+    owner: root
+    group: root
+    mode: 744
+  tags: nodogsplash
 
-   - name: Tune Nodogsplash 3 Update GatewayName
-     replace:
-       path: /etc/nodogsplash/nodogsplash.conf
-       regexp: 'ansibledest\.local'
-       replace: "{{ hostname }}"
+- name: Tune Nodogsplash 3 Update GatewayName
+  replace:
+    path: /etc/nodogsplash/nodogsplash.conf
+    regexp: ansibledest\.local
+    replace: '{{ hostname }}'
 
-   - name: Tune Nodogsplash 4 Update GatewayAddress 
-     lineinfile:
-       path: /etc/nodogsplash/nodogsplash.conf
-       regexp: '^GatewayAddress\s.*$'
-       line: 'GatewayAddress {{ wifi_ip }}'
+- name: Tune Nodogsplash 4 Update GatewayAddress
+  lineinfile:
+    path: /etc/nodogsplash/nodogsplash.conf
+    regexp: ^GatewayAddress\s.*$
+    line: GatewayAddress {{ wifi_ip }}
 
-   - name: Tune Nodogsplash 5 Update RedirectUrl for continue button 
-     lineinfile:
-       path: /etc/nodogsplash/nodogsplash.conf
-       regexp: 'http:\/\/10\.10\.42\.1\s.*$'
-       line: 'http://{{ hostname }}/'
+- name: Tune Nodogsplash 5 Update RedirectUrl for continue button
+  lineinfile:
+    path: /etc/nodogsplash/nodogsplash.conf
+    regexp: http:\/\/10\.10\.42\.1\s.*$
+    line: http://{{ hostname }}/
 
-   - name: Tune Nodogsplash 6 Update status.htm
-     lineinfile:
-       path: /etc/nodogsplash/htdocs/status.html
-       regexp: '33\.33\.33\.33'
-       line: '{{ hostname }}'
+- name: Tune Nodogsplash 6 Update status.htm
+  lineinfile:
+    path: /etc/nodogsplash/htdocs/status.html
+    regexp: 33\.33\.33\.33
+    line: '{{ hostname }}'
 
-   - name: Tune Nodogsplash 7 Update status.htm
-     lineinfile:
-       path: /etc/nodogsplash/htdocs/status.html
-       regexp: 'na-internet-in-a-box\.itm'
-       line: '{{ hostname }}'
+- name: Tune Nodogsplash 7 Update status.htm
+  lineinfile:
+    path: /etc/nodogsplash/htdocs/status.html
+    regexp: na-internet-in-a-box\.itm
+    line: '{{ hostname }}'
 
-   - name: enable nodogsplash.service
-     command: systemctl enable nodogsplash.service
-     tags: 
-     - CaptivePortal
-     - Ices  
-     - Streamer
-
+- name: enable nodogsplash.service
+  command: systemctl enable nodogsplash.service
+  tags:
+    - CaptivePortal
+    - Ices
+    - Streamer

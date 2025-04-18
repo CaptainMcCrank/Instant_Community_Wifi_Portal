@@ -3,7 +3,7 @@ py_version: 3.8.0
 threads: 4
 temp_folder: /tmp
 # ***BE SURE TO INCREMENT THE FOLLOWING 3 VARIABLES IF YOU ARE UPGRADING THE HOTSPOT
-root_playbook_dir:  /home/pi/Playbooks/InstantCommunityWifiPortal
+root_playbook_dir:  /home/pi/Playbooks/Instant_Community_Wifi_Portal
 os_info_path: /etc/os-release
 int_count: "{{ ansible_interfaces | count }}"
 docker_host: "{{ lookup('ansible.builtin.env', 'DOCKER_HOST') }}"
