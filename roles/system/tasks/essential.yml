@@ -140,9 +140,9 @@
        upgrade: dist
      tags: AnsibleHousekeeping 
 
-   - name: upgrade pip (PIP3 is required for modern ansible)
-     command: python -m pip install --upgrade pip
-     tags: hotspot
+#   - name: upgrade pip (PIP3 is required for modern ansible)
+#     command: python -m pip install --upgrade pip3
+#     tags: hotspot
 
 #   - name: "Install libssl dependency"
 #     apt:
