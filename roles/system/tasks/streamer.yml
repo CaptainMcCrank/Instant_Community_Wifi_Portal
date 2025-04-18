@@ -277,7 +277,8 @@
 
    - name: "configure ices0.4"
      become_user: pi
-     command: ./configure --prefix=/var/ices --with-lame-libraries=/usr/bin/lame 
+     #command: ./configure --prefix=/var/ices --with-lame-libraries=/usr/bin/lame
+     command: ./configure --build=aarch64-unknown-linux-gnu --prefix=/var/ices --with-lame-libraries=/usr/bin/lame
      args:
        chdir: "/tmp/ices-0.4"
      tags: 
