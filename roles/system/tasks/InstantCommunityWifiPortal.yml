@@ -19,7 +19,7 @@
 
    - name: Set GOPATH environment variable & install cgd
      shell:
-       cmd: 'GOPATH=/usr/local/go go get github.com/uriel/cgd'
+       cmd: 'GOPATH=/usr/local/go go install github.com/uriel/cgd@latest'
 
    - name: Create systemd unit file
      copy:
