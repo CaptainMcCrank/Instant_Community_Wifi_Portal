@@ -1,4 +1,8 @@
 ---
+
+   - name: gather facts
+     ansible.builtin.setup:
+
    - name: Check if target OS is Raspberry Pi OS Bookworm
      ansible.builtin.fail:
        msg: "This playbook is designed to run on Raspberry Pi OS Bookworm. The target system is running {{ ansible_distribution }} {{ ansible_distribution_version }}"
@@ -24,10 +28,16 @@
    - debug:
        msg: "content of remote file {{os_info_path}}: {{remote_os_info}}"
 
-   - name: deactivate wlan1 if its on
+#   - name: deactivate wlan1 if its on
+#     command: ip link set wlan1 down
+#     when: int_count != '3'
+#     tags: AnsibleHousekeeping 
+
+   - name: deactivate wlan1 if it's present
      command: ip link set wlan1 down
-     when: int_count != '3'
-     tags: AnsibleHousekeeping 
+     when: "'wlan1' in ansible_interfaces"
+     tags: AnsibleHousekeeping
+
 
    - name: wipe /var/cache/apt/* 
      file:
