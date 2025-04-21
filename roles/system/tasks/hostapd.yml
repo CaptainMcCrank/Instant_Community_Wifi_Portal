@@ -46,6 +46,15 @@
      command: update-rc.d hostapd enable
      tags: base
 
+   - name: Create symbolic link from hostapd.conf to CaptivePortalAPD.conf
+     file:
+       src: /etc/hostapd/CaptivePortalAPD.conf
+       dest: /etc/hostapd/hostapd.conf
+       state: link
+       owner: root
+       group: root
+     tags: hotspot
+
    - name: Copy the /etc/dhcpcd.conf file which makes sure wlan0 has a static ip
      copy:
        src: "{{ root_playbook_dir }}/etc/dhcpcd.conf"
