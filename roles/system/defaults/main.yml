@@ -10,6 +10,8 @@ docker_host: "{{ lookup('ansible.builtin.env', 'DOCKER_HOST') }}"
 new_password: "ChangeDefaultPWD3331333"
 hostname: "thepub.local"
 wifi_ip: "10.10.42.1"
+# Default WiFi interface - will be dynamically updated if external adapter is detected
+wifi_interface: "wlan0"
 version:
   Build: CommunityWifiPortal
   BuildDate: "06_08_23"

@@ -33,10 +33,22 @@
 #     when: int_count != '3'
 #     tags: AnsibleHousekeeping 
 
-   - name: deactivate wlan1 if it's present
-     command: ip link set wlan1 down
+   - name: Check if AWUS036ACH adapter is present (wlan1)
+     set_fact:
+       wifi_interface: "wlan1"
      when: "'wlan1' in ansible_interfaces"
-     tags: AnsibleHousekeeping
+     tags: 
+       - AnsibleHousekeeping
+       - wifi_config
+       - hotspot
+
+   - name: Display selected WiFi interface for hotspot
+     debug:
+       msg: "Using {{ wifi_interface }} for WiFi hotspot"
+     tags: 
+       - AnsibleHousekeeping
+       - wifi_config
+       - hotspot
 
 
    - name: wipe /var/cache/apt/* 

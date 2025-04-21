@@ -11,9 +11,9 @@
      file: path=/etc/hostapd/ state=directory mode=0755
      tags: hotspot
 
-   - name: Copy /etc/hostapd/CaptivePortalAPD.conf configuration that is used to set a forwarding hotspot with no password #Likely needs updates if I change interfaces
-     ansible.builtin.copy:
-       src: "{{ root_playbook_dir }}/etc/hostapd/CaptivePortalAPD.conf"
+   - name: Create hostapd Configuration file from template 
+     ansible.builtin.template:
+       src: "{{ root_playbook_dir }}/templates/hostapd/CaptivePortalAPD.conf.j2"
        dest: /etc/hostapd/CaptivePortalAPD.conf
        owner: root
        group: root
@@ -55,9 +55,9 @@
        group: root
      tags: hotspot
 
-   - name: Copy the /etc/dhcpcd.conf file which makes sure wlan0 has a static ip
-     copy:
-       src: "{{ root_playbook_dir }}/etc/dhcpcd.conf"
+   - name: Configure dhcpcd.conf with the selected WiFi interface
+     template:
+       src: "{{ root_playbook_dir }}/templates/dhcpcd.conf.j2"
        dest: /etc/dhcpcd.conf
        owner: root
        group: netdev

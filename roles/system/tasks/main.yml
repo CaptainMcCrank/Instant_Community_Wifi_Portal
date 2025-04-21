@@ -1,5 +1,6 @@
 ---
 - import_tasks: essential.yml
+- import_tasks: AWUS036ACH_wifi_adapter.yml
 - import_tasks: dnsmasq.yml
 - import_tasks: hostapd.yml
 - import_tasks: nginx.yml
