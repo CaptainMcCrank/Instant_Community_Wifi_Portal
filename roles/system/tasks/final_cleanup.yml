@@ -31,10 +31,17 @@
      command: systemctl enable resize2fs_once
      tags: os_config_files
 
+   - name: Generate hashed password using python crypt
+     shell: |
+       python3 -c 'import crypt; print(crypt.crypt("{{ new_password }}", crypt.mksalt(crypt.METHOD_SHA512)))'
+     register: password_hash_output
+     changed_when: false
+
    - name: Change password for user pi
      user:
        name: pi
-       password: "{{ new_password | password_hash('sha512') }}"
+       password: "{{ password_hash_output.stdout }}"
+
 
    - name: Clear the log files! 
      command: bash -c "/usr/local/bin/ClearLogs.sh"

@@ -103,11 +103,72 @@
        mode: 0600
      tags: streamer
 
-   - name: Overwrite /etc/apt/sources.list to use builderhotspot's general apt-related proxies.
-     command: cp /tmp/apt/sources.list.pre /etc/apt/sources.list
+
+   - name: Fetch current Debian version
+     ansible.builtin.shell:
+       cmd: >
+         curl -s https://www.debian.org/releases/ | 
+         grep -iA 1 'distribution of Debian is version' | 
+         sed -n '/<em>/s/.*<em>\(.*\)<\/em>.*/\1/p'
+     register: debian_version
+     changed_when: false
+
+   - name: Display Debian version
+     ansible.builtin.debug:
+       msg: "The current Debian version is {{ debian_version.stdout }}"
+
+   - name: Move file if on Raspbian Bookworm
+     ansible.builtin.command:
+       cmd: mv /etc/apt/trusted.gpg /etc/apt/trusted.gpg.d/
+     args:
+       removes: /etc/apt/trusted.gpg  # This argument makes the task idempotent
+     register: move_result
+     when: ansible_distribution == 'Debian' and ansible_distribution_release == 'bookworm'
+
+   - name: Check move result
+     ansible.builtin.debug:
+       msg: "File moved successfully."
+     when: move_result.changed == True and ansible_distribution == 'Debian' and ansible_distribution_release == 'bookworm'
+
+   - name: File was already moved
+     ansible.builtin.debug:
+       msg: "File was already in the destination."
+     when: move_result.changed == False and ansible_distribution == 'Debian' and ansible_distribution_release == 'bookworm'
+
+   - name: Replace 'bullseye' with current Debian version in /tmp/apt/sources.list.d/raspi.list.pre
+     ansible.builtin.replace:
+       path: "/tmp/apt/sources.list.d/raspi.list.pre"
+       regexp: 'bullseye'
+       replace: "{{ debian_version.stdout }}"
+     register: pre_replacement
+
+   - name: Replace 'bullseye' with current Debian version in /tmp/apt/sources.list.d/raspi.list.post
+     ansible.builtin.replace:
+       path: "/tmp/apt/sources.list.d/raspi.list.post"
+       regexp: 'bullseye'
+       replace: "{{ debian_version.stdout }}"
+     register: post_replacement
+
+   - name: Replace 'bullseye' with current Debian version in /tmp/apt/sources.list.pre
+     ansible.builtin.replace:
+       path: "/tmp/apt/sources.list.pre"
+       regexp: 'bullseye'
+       replace: "{{ debian_version.stdout }}"
+     register: pre_replacement
+
+   - name: Replace 'bullseye' with current Debian version in /tmp/apt/sources.list.post
+     ansible.builtin.replace:
+       path: "/tmp/apt/sources.list.post"
+       regexp: 'bullseye'
+       replace: "{{ debian_version.stdout }}"
+     register: post_replacement
+
 
    - name: Overwrite /etc/apt/sources.list.d/raspi.list to use builderhotspot's raspbian-related proxies.
      command: cp /tmp/apt/sources.list.d/raspi.list.pre /etc/apt/sources.list.d/raspi.list
+
+   - name: Overwrite /etc/apt/sources.list to use builderhotspot's general apt-related proxies.
+     command: cp /tmp/apt/sources.list.pre /etc/apt/sources.list
 
    - name: Modify the /etc/apt/sources.list.pre apt source if the playbook host has DOCKER_HOST environmental variable
      ansible.builtin.replace:
@@ -133,7 +194,10 @@
      tags: AnsibleHousekeeping 
 
    - name: upgrade pip (PIP3 is required for modern ansible)
-     command: python -m pip install --upgrade pip
+     apt: 
+       pkg: python3-pip
+       state: present
+       update_cache: true
      tags: hotspot
 
 #   - name: "Install libssl dependency"
