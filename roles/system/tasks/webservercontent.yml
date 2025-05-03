@@ -35,9 +35,12 @@
      - streamer
      - icecast
      - ices
-    
+  
    - name: Rename the lower tier Tokume website directory
      command: "mv /var/www/ansibledest.local/sites/ansibledest.local /var/www/ansibledest.local/sites/{{ hostname }}"
 
    - name: Rename the Tokumei website directory
      command: "mv /var/www/ansibledest.local /var/www/{{ hostname }}"
+
+   - name: Create symbolic link for thepub
+     command: ln -s /etc/nginx/sites-available/thepub.local /etc/nginx/sites-enabled/

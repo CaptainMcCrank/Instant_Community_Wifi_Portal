@@ -25,6 +25,34 @@
         name: certbot
         classic: true
 
+    - name: Generate private key
+      openssl_privatekey:
+        path: /etc/ssl/private/nginx-selfsigned.key
+        size: 2048
+
+    - name: Generate self-signed certificate
+      openssl_certificate:
+        path: /etc/ssl/certs/nginx-selfsigned.crt
+        privatekey_path: /etc/ssl/private/nginx-selfsigned.key
+        provider: selfsigned
+        selfsigned_not_after: "+365d"  # Valid for 365 days
+
+    - name: Create directory for Nginx SSL files
+      file:
+        path: /etc/nginx/ssl
+        state: directory
+        mode: '0755'
+        owner: root
+        group: root
+
+    - name: Generate Diffie-Hellman parameters
+      openssl_dhparam:
+        path: /etc/nginx/ssl/dhparams-thepub.local.pem
+        size: 2048
+        state: present
+      notify: restart nginx
+      timeout: 10000
+
     - name: Create symbolic link for certbot
       command:
         cmd: ln -s /snap/bin/certbot /usr/bin/certbot

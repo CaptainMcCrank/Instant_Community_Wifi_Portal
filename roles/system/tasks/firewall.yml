@@ -36,5 +36,8 @@
        proto: udp
        state: enabled
 
-   - name: Enable UFW
-     command: ufw --force enable
+# you need to add the following material to the end of final_cleanup.yml
+# so you don't get orphaned during the build.  
+
+#  - name: Enable UFW
+#     command: ufw --force enable

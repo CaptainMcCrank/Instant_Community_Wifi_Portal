@@ -6,7 +6,7 @@
 - import_tasks: nginx.yml
 - import_tasks: captivePortal.yml
 - import_tasks: webservercontent.yml
-- import_tasks: streamer.yml
+- import_tasks: streamer.yml temporarily disabling while I debug the wireless driver stuff
 - import_tasks: InstantCommunityWifiPortal.yml
 - import_tasks: firewall.yml
 - import_tasks: chromium.yml

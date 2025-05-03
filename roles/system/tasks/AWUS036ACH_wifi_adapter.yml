@@ -1,112 +1,186 @@
 ---
-   - name: Clone of 8812au-20210629.git drivers
-     ansible.builtin.git:
-       repo: https://github.com/morrownr/8812au-20210629.git
-       dest: /home/pi/8812au_src
-       #single_branch: yes
-       #version: master
-     tags:          
-     - nodogsplash
-     - streamer
+# the following 2 commands are probably not needed.  
+# I was getting prompted for credentials because the github repository
+# was no longer valid.  I updated to the new version and now the clone is working.
+# //todo: test a build where I remvoe the configure git and disable cred helper.
 
-   - name: Install driver prerequisites
-     apt:
+#    - name: Configure Git to not prompt for credentials
+#      ansible.builtin.command:
+#        cmd: git config --global --add url."https://".insteadOf git://
+  
+#    - name: Disable credential helper
+#      ansible.builtin.command:
+#        cmd: git config --global credential.helper ""
+
+    - name: Fix broken packages before installing driver prerequisites
+      apt:
+        upgrade: dist
+        update_cache: yes
+
+#    - name: Install specific version of libssl3 with downgrades allowed
+##      apt:
+ #       name: libssl3=3.0.15-1~deb12u1
+ #       state: present
+ #       dpkg_options: "--allow-downgrades"
+
+    - name: Install driver prerequisites
+      apt:
        name: "{{ item }}"
        state: present
-     loop:
-       - bison
-       - flex
-       - libssl-dev
-       - python2
-       - libncurses5-dev
-       - bc
-       - dkms
-
-   - name: wget rpi-source
-     command: wget -O /usr/local/bin/rpi-source  https://raw.githubusercontent.com/RPi-Distro/rpi-source/master/rpi-source
-
-   - name: Change ownership of rpi-source
-     ansible.builtin.file:
-       path: /usr/local/bin/rpi-source
-       owner: pi
-       group: pi
-       mode: 0740
-
-   - name: update rpi-source
-     ansible.builtin.expect:
-       command: /usr/bin/rpi-update
-       responses:
-         (?i)proceed?: "y"
-       timeout: 300 
-
-   - name: launch the reboot
-     shell: 'sleep 1 && shutdown -r now "Reboot triggered by Ansible" && sleep 1'
-     async: 1
-     poll: 0
-
-   - name: Wait for server to restart
-     local_action:
-       module: wait_for
-         host={{ inventory_hostname }}
-         port=22
-         delay=10
-
-   - name: run rpi-source
-     shell: /usr/local/bin/rpi-source || /bin/true
-     ignore_errors: true
-     args:
-       executable: /bin/bash
-     become_user: pi
-
-   - name: Run apt-get update
-     apt:
-       update_cache: yes 
-
-#   - name: launch the reboot
-#     reboot:
-#       msg: "Reboot with ansible..."
-#       connect_timeout: 5
-#       reboot_timeout: 120
-#       #pre_reboot_delay: 0
-#       #post_reboot_delay: 30
-#       test_command: whoami
-
-#   - name: launch the reboot
-#     shell: 'sleep 1 && shutdown -r now "Reboot triggered by Ansible" && sleep 1'
-#     async: 1
-#     poll: 0
-
-#   - name: Wait for server to restart
-#     local_action:
-#       module: wait_for
-#         host={{ inventory_hostname }}
-#         port=22
-#         delay=10
-
-   - name: enable kernel headers
-     command: apt policy raspberrypi-kernel-headers
-
-   - name: Install raspberrypi-kernel-headers
-     apt:
-       name: raspberrypi-kernel-headers
-       state: present
+      loop:
+#        - bison
+#        - flex
+        #- libssl-dev
+        #- python2
+        # - raspberrypi-kernel-headers
+##        - libncurses5-dev
+#       - bc
+        - dkms
+        - rfkill
 
 
-   - name: remove the drivers
-     ansible.builtin.expect:
-       command: /bin/bash /home/pi/8812au_src/remove-driver.sh
-       responses:
-         (?i)(recommended): "N"
-
-   - name: install the drivers
-     ansible.builtin.expect:
-       chdir: /home/pi/8812au_src
-       command: /bin/bash /home/pi/8812au_src/install-driver.sh
-       responses: 
-         Do you want to edit the driver options file now\? \(recommended\) \[Y\/n\] : "n"
-         (?i)rebooting now\? \(recommended\) \[Y\/n\].: "n"
-       timeout: 500 #650
+    - name: wget rpi-source
+      command: wget -O /usr/local/bin/rpi-source  https://raw.githubusercontent.com/RPi-Distro/rpi-source/master/rpi-source
 
 
 
-         
+    - name: Change ownership of rpi-source
+      ansible.builtin.file:
+        path: /usr/local/bin/rpi-source
+        owner: pi
+        group: pi
+        mode: 0740
+
+#    - name: update rpi-source
+#      ansible.builtin.expect:
+#       command: /usr/bin/rpi-update
+#       responses:
+##         (?i)proceed?: "y"
+#      timeout: 10000 #1800 
+
+#    - name: launch the reboot
+#      shell: 'sleep 1 && shutdown -r now "Reboot triggered by Ansible" && sleep 1'
+#      async: 1
+#      poll: 0
+
+#    - name: Wait for server to restart
+#      local_action:
+#        module: wait_for
+#          host={{ inventory_hostname }}
+#          port=22
+#          delay=10
+
+    - name: update rpi-source
+      shell: yes "" | /usr/local/bin/rpi-source --tag-update
+      timeout: 1800
+      become: true
+
+    - name: run rpi-source
+      shell: yes "" | /usr/local/bin/rpi-source -v || /bin/true # added timeout to avoid indefinite hangs.  added -v to give more detail
+      ignore_errors: true
+      args:
+        executable: /bin/bash
+      become_user: pi
+
+    - name: Run apt-get update
+      apt:
+        update_cache: yes 
+
+    - name: enable kernel headers
+      command: apt policy raspberrypi-kernel-headers
+    
+    - name: Debug linux_dir variable
+      debug:
+        var: linux_dir
+
+# prepare to fix the linux source we pulled to overcome kernel configuration is invalid error.
+    
+    - name: Find Linux directory
+      find:
+        paths: /home/pi
+        patterns: "linux-*"
+        file_type: directory
+      register: linux_dir
+
+    - name: Debug linux_dir variable
+      debug:
+        var: linux_dir
+
+    - name: Run make commands in Linux directory
+      shell: yes "" | make oldconfig && make prepare #using yes "" | make oldconfig which pipes "yes" to the command, accepting all defaults for any configuration prompts. 
+      args:
+        chdir: "{{ item.path }}"
+        executable: /bin/bash
+      become: true
+      become_user: pi
+      with_items: "{{ linux_dir.files }}"
+      when: linux_dir.matched > 0
+
+    #- name: Install RTL8812AU driver
+    #  shell: 
+    #    cmd: make dkms_install && make oldconfig && make prepare
+    #    chdir: /home/pi/8812au_src/
+    #  become: true
+
+    - name: Clone of 8812au-20210820.git drivers
+      ansible.builtin.git:
+        #repo: https://github.com/morrownr/8812au-20210629.git
+        repo: https://github.com/morrownr/8812au-20210820.git
+        #repo: https://github.com/aircrack-ng/rtl8812au.git
+        dest: /home/pi/8812au_src
+        force: yes
+        #version: master
+        accept_hostkey: yes
+      #register: git_clone_result
+      retries: 3
+      #delay: 10
+      #until: git_clone_result is succeeded
+      tags:
+       - nodogsplash
+       - streamer
+    
+    - name: Set correct permissions on driver directory
+      file:
+        path: /home/pi/8812au_src
+        state: directory
+        owner: pi
+        group: pi
+        mode: '0755'
+        recurse: yes
+      become: true
+
+    - name: Run make commands in driver directory
+      shell: make 
+      args:
+        chdir: /home/pi/8812au_src/
+        executable: /bin/bash
+      become: true
+      become_user: pi
+
+    - name: Change CONFIG_PLATFORM_I386_PC from y to n
+      ansible.builtin.replace:
+        path: /home/pi/8812au_src/Makefile
+        regexp: 'CONFIG_PLATFORM_I386_PC = y'
+        replace: 'CONFIG_PLATFORM_I386_PC = n'
+
+    - name: Change CONFIG_PLATFORM_ARM_RPI from n to y
+      ansible.builtin.replace:
+        path: /home/pi/8812au_src/Makefile
+        regexp: 'CONFIG_PLATFORM_ARM_RPI = n'
+        replace: 'CONFIG_PLATFORM_ARM_RPI = y'
+
+    - name: Install the compiled driver
+      ansible.builtin.command:
+        cmd: make install
+        chdir: /home/pi/8812au_src
+      become: true
+
+    - name: Run install-driver.sh with automatic responses to prompts
+      ansible.builtin.expect:
+        command: sudo ./install-driver.sh
+        chdir: /home/pi/8812au_src
+        responses:
+          'Do you want to edit the driver options file now\? \(recommended\) \[Y/n\]': 'n'
+          'Do you want to apply the new options by rebooting now\? \(recommended\) \[Y/n\]': 'n'
+        timeout: 1800
+      become: true

@@ -1,4 +1,9 @@
 ---
+   - name: Synchronization of files for resetting sources
+     ansible.builtin.copy: 
+       src: "{{ root_playbook_dir }}/etc/apt"
+       dest: /tmp/
+
    - name: final cleanup /etc/apt/sources.list
      command: mv /tmp/apt/sources.list.post /etc/apt/sources.list
      tags: AnsibleHousekeeping 
@@ -66,3 +71,13 @@
      lineinfile:
        path: /etc/hosts
        line: '{{ wifi_ip }} {{ hostname }} {{ hostname }}'
+  
+
+   - name: Copy avahi settings
+     copy:
+       src: "{{ root_playbook_dir }}/etc/avahi/avahi-daemon.conf"
+       dest: /etc/avahi/avahi-daemon.conf
+
+
+#   - name: Enable UFW //todo: IMPORTANT: reenable this
+#     command: ufw --force enable
