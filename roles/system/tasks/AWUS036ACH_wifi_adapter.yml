@@ -184,3 +184,10 @@
           'Do you want to apply the new options by rebooting now\? \(recommended\) \[Y/n\]': 'n'
         timeout: 1800
       become: true
+
+    - name: Set NetworkManager to not manage wlan2
+      community.general.nmcli:
+        type: device
+        name: wlan2
+        state: unmanaged
+      become: true
