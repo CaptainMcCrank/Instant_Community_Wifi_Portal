@@ -9,6 +9,7 @@
 - import_tasks: webservercontent.yml
 # - import_tasks: streamer.yml 
 - import_tasks: InstantCommunityWifiPortal.yml
+- import_tasks: selfie_portal.yml
 - import_tasks: firewall.yml
 - import_tasks: chromium.yml
 - import_tasks: setup.yml
