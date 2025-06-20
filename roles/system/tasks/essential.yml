@@ -356,15 +356,6 @@
      - os_config_files
      - streamer
 
-   - name: Copy /etc/dhcpcd.conf file #Likely needs updates if I change interfaces
-     copy:
-       src: "{{ root_playbook_dir }}/etc/dhcpcd.conf"
-       dest: /etc/dhcpcd.conf
-       owner: root
-       group: netdev
-       mode: 0664
-     tags: os_config_files
-
    - name: Copy /etc/host.conf file 
      copy:
        src: "{{ root_playbook_dir }}/etc/host.conf"
@@ -419,14 +410,14 @@
      - os_config_files
      - AnsibleHousekeeping
 
-   - name: Copy /etc/modprobe.d/8192cu.conf file that prevents power saving on wlan0
-     copy:
-       src: "{{ root_playbook_dir }}/etc/modprobe.d/8192cu.conf"
-       dest: /etc/modprobe.d/8192cu.conf
-       owner: root
-       group: root
-       mode: 0644
-     tags: new
+#   - name: Copy /etc/modprobe.d/8192cu.conf file that prevents power saving on wlan0
+#     copy:
+#       src: "{{ root_playbook_dir }}/etc/modprobe.d/8192cu.conf"
+#       dest: /etc/modprobe.d/8192cu.conf
+#       owner: root
+#       group: root
+#       mode: 0644
+#     tags: new
 
    - name: resolv.conf.head file
      copy:

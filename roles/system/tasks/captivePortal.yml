@@ -21,7 +21,7 @@
     - streamer
 
 - name: Setup port 80 forwarding
-  command: iptables -t nat -A PREROUTING -i wlan0 -p tcp --dport 80 -j DNAT
+  command: iptables -t nat -A PREROUTING -i {{ wifi_interface }} -p tcp --dport 80 -j DNAT
     --to-destination {{ wifi_ip }}:80
   tags:
     - os_config_files
@@ -29,7 +29,7 @@
     - CaptivePortal
 
 - name: Setup port 443 forwarding
-  command: iptables -t nat -A PREROUTING -i wlan0 -p tcp --dport 443 -j DNAT
+  command: iptables -t nat -A PREROUTING -i {{ wifi_interface }} -p tcp --dport 443 -j DNAT
     --to-destination {{ wifi_ip }}:80
   tags:
     - os_config_files
@@ -138,29 +138,29 @@
     mode: 744
   tags: nodogsplash
 
-- name: Tune Nodogsplash 3 Update GatewayName
+- name: Tune Nodogsplash 3 Update GatewayInterface
   replace:
     path: /etc/nodogsplash/nodogsplash.conf
-    regexp: ansibledest\.local
-    replace: '{{ hostname }}'
+    regexp: GatewayInterface \{\{ wifi_interface \}\}
+    replace: GatewayInterface {{ wifi_interface }}
 
 - name: Tune Nodogsplash 4 Update GatewayAddress
-  lineinfile:
+  replace:
     path: /etc/nodogsplash/nodogsplash.conf
-    regexp: ^GatewayAddress\s.*$
-    line: GatewayAddress {{ wifi_ip }}
+    regexp: GatewayAddress \{\{ wifi_ip \}\}
+    replace: GatewayAddress {{ wifi_ip }}
 
-- name: Tune Nodogsplash 5 Update RedirectUrl for continue button
-  lineinfile:
+- name: Tune Nodogsplash 5 Update GatewayName
+  replace:
     path: /etc/nodogsplash/nodogsplash.conf
-    regexp: http:\/\/10\.10\.42\.1\s.*$
-    line: http://{{ hostname }}/
+    regexp: GatewayName \{\{ hostname \}\}
+    replace: GatewayName {{ hostname }}
 
-- name: Tune Nodogsplash 6 Update status.htm
-  lineinfile:
-    path: /etc/nodogsplash/htdocs/status.html
-    regexp: 33\.33\.33\.33
-    line: '{{ hostname }}'
+- name: Tune Nodogsplash 6 Update RedirectURL
+  replace:
+    path: /etc/nodogsplash/nodogsplash.conf
+    regexp: RedirectURL http://\{\{ hostname \}\}/
+    replace: RedirectURL http://{{ hostname }}/
 
 - name: Tune Nodogsplash 7 Update status.htm
   lineinfile:

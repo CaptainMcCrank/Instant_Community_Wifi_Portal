@@ -1,0 +1,21 @@
+---
+- name: Create NetworkManager dnsmasq-shared.d directory
+  file:
+    path: /etc/NetworkManager/dnsmasq-shared.d
+    state: directory
+    mode: '0755'
+    owner: root
+    group: root
+
+- name: Copy wlan1 dnsmasq configuration
+  copy:
+    src: '{{ root_playbook_dir }}/etc/NetworkManager/dnsmasq-shared.d/wlan1.conf'
+    dest: /etc/NetworkManager/dnsmasq-shared.d/wlan1.conf
+    mode: '0644'
+    owner: root
+    group: root
+
+- name: Restart NetworkManager to apply dnsmasq changes
+  systemd:
+    name: NetworkManager
+    state: restarted 

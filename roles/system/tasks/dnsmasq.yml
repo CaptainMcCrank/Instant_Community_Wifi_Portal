@@ -7,7 +7,7 @@
 
    - name: Copy /etc/dnsmasq.conf configuration that is used for DHCP assignment #Likely needs updates if I change interfaces
      copy:
-       src: "{{ root_playbook_dir }}/etc/NAIIABdnsmasq.conf"
+       src: "{{ root_playbook_dir }}/etc/IIABdnsmasq.conf"
        dest: /etc/dnsmasq.conf
        owner: root
        group: root

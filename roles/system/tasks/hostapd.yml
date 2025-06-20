@@ -42,6 +42,10 @@
      command: systemctl unmask hostapd.service
      tags: hotspot
 
+   - name: enable hostapd.service
+     command: systemctl enable hostapd.service
+
+
    - name: enable hostapd (so it launches afterboot)
      command: update-rc.d hostapd enable
      tags: base
