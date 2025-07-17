@@ -1,0 +1,13 @@
+---
+- name: restart selfie app
+  systemd:
+    name: "{{ selfie_app.service_name }}"
+    state: restarted
+    daemon_reload: yes
+  listen: "restart selfie app"
+
+- name: reload selfie app
+  systemd:
+    name: "{{ selfie_app.service_name }}"
+    state: reloaded
+  listen: "reload selfie app" 

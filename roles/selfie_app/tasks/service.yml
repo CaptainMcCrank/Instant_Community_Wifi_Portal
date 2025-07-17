@@ -1,0 +1,31 @@
+---
+- name: Enable and start selfie app service
+  systemd:
+    name: "{{ selfie_app.service_name }}"
+    state: started
+    enabled: yes
+    daemon_reload: yes
+  tags:
+    - selfie_app
+    - service
+
+- name: Wait for selfie app to be ready
+  wait_for:
+    port: "{{ selfie_app.app_port }}"
+    host: "127.0.0.1"
+    delay: 5
+    timeout: 30
+  tags:
+    - selfie_app
+    - service
+
+- name: Test selfie app health endpoint
+  uri:
+    url: "http://127.0.0.1:{{ selfie_app.app_port }}/health"
+    method: GET
+    status_code: 200
+  register: health_check
+  failed_when: health_check.status != 200
+  tags:
+    - selfie_app
+    - service 

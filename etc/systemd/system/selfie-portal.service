@@ -1,0 +1,17 @@
+[Unit]
+Description=Selfie Portal Flask Application
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/thepub.local/apps/selfies
+Environment=PATH=/var/www/thepub.local/apps/selfies/venv/bin
+ExecStart=/var/www/thepub.local/apps/selfies/venv/bin/python app.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

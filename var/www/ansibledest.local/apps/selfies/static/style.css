@@ -68,6 +68,118 @@ body {
     background-color: rgba(0, 0, 0, 0.1);
 }
 
+/* Gnome Introduction Styles */
+.gnome-intro {
+    background: linear-gradient(135deg, #f7fafc 0%, #edf2f7 100%);
+    margin: 1rem;
+    border-radius: 20px;
+    padding: 2rem;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+    border: 2px solid rgba(102, 126, 234, 0.2);
+    position: relative;
+    overflow: hidden;
+}
+
+.gnome-intro::before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: radial-gradient(circle, rgba(102, 126, 234, 0.1) 0%, transparent 70%);
+    animation: sparkle 4s ease-in-out infinite;
+    pointer-events: none;
+}
+
+@keyframes sparkle {
+    0%, 100% { transform: rotate(0deg) scale(1); opacity: 0.3; }
+    50% { transform: rotate(180deg) scale(1.1); opacity: 0.6; }
+}
+
+.gnome-content {
+    display: flex;
+    align-items: flex-start;
+    gap: 1.5rem;
+    position: relative;
+    z-index: 1;
+}
+
+.gnome-avatar {
+    flex-shrink: 0;
+    width: 80px;
+    height: 80px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 20px rgba(102, 126, 234, 0.4);
+    border: 3px solid rgba(255, 255, 255, 0.8);
+}
+
+.gnome-icon {
+    font-size: 2.5rem;
+    color: white;
+    animation: bounce 2s ease-in-out infinite;
+}
+
+@keyframes bounce {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-5px); }
+}
+
+.gnome-message {
+    flex: 1;
+}
+
+.gnome-message h2 {
+    font-size: 1.4rem;
+    font-weight: 600;
+    color: #2d3748;
+    margin-bottom: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.gnome-message h2 i {
+    color: #667eea;
+    animation: twinkle 1.5s ease-in-out infinite;
+}
+
+@keyframes twinkle {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.7; transform: scale(1.1); }
+}
+
+.gnome-text {
+    color: #4a5568;
+    line-height: 1.7;
+    font-size: 0.95rem;
+}
+
+.gnome-text p {
+    margin-bottom: 1rem;
+    text-align: justify;
+}
+
+.gnome-text p:last-child {
+    margin-bottom: 0;
+}
+
+.gnome-signature {
+    font-style: italic;
+    color: #667eea !important;
+    text-align: center !important;
+    font-size: 1rem !important;
+    margin-top: 1.5rem !important;
+    padding: 1rem;
+    background: rgba(102, 126, 234, 0.1);
+    border-radius: 12px;
+    border-left: 4px solid #667eea;
+}
+
 /* Button Styles */
 .btn {
     display: inline-flex;
@@ -598,6 +710,41 @@ body {
         font-size: 1.5rem;
     }
     
+    .gnome-intro {
+        margin: 0.5rem;
+        padding: 1.5rem;
+    }
+    
+    .gnome-content {
+        flex-direction: column;
+        text-align: center;
+        gap: 1rem;
+    }
+    
+    .gnome-avatar {
+        align-self: center;
+        width: 70px;
+        height: 70px;
+    }
+    
+    .gnome-icon {
+        font-size: 2rem;
+    }
+    
+    .gnome-message h2 {
+        font-size: 1.2rem;
+        justify-content: center;
+    }
+    
+    .gnome-text {
+        font-size: 0.9rem;
+    }
+    
+    .gnome-signature {
+        font-size: 0.9rem !important;
+        padding: 0.75rem;
+    }
+    
     .camera-frame {
         width: 200px;
         height: 200px;
@@ -653,6 +800,24 @@ body {
     
     .header p {
         color: #a0aec0;
+    }
+    
+    .gnome-intro {
+        background: linear-gradient(135deg, #2d3748 0%, #1a202c 100%);
+        border-color: rgba(102, 126, 234, 0.4);
+    }
+    
+    .gnome-message h2 {
+        color: #e2e8f0;
+    }
+    
+    .gnome-text {
+        color: #a0aec0;
+    }
+    
+    .gnome-signature {
+        background: rgba(102, 126, 234, 0.2);
+        color: #90cdf4 !important;
     }
     
     .gallery-section,

@@ -21,15 +21,165 @@ class SelfiePortal {
         this.stream = null;
         this.currentFacingMode = 'user'; // 'user' for front camera, 'environment' for back
         this.capturedImageData = null;
+        this.cameraSupported = false;
         
-        this.init();
+        // Initialize asynchronously
+        this.init().catch(error => {
+            console.error('Failed to initialize SelfiePortal:', error);
+        });
     }
     
-    init() {
+    async init() {
         this.bindEvents();
+        await this.checkCameraSupport();
         this.initCamera();
         this.initNavigation();
         this.autoRefresh();
+    }
+    
+    async testCameraPermissions() {
+        try {
+            console.log('Testing camera permissions...');
+            
+            // Try to enumerate devices first
+            if (navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) {
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                const videoDevices = devices.filter(device => device.kind === 'videoinput');
+                console.log('Available video devices:', videoDevices.length);
+                
+                if (videoDevices.length === 0) {
+                    console.log('No video devices found');
+                    return false;
+                }
+            }
+            
+            // Try to get user media with minimal constraints
+            const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+            console.log('Camera permission test successful');
+            
+            // Stop the test stream
+            stream.getTracks().forEach(track => track.stop());
+            return true;
+            
+        } catch (error) {
+            console.error('Camera permission test failed:', error);
+            return false;
+        }
+    }
+    
+    async checkCameraSupport() {
+        // Debug information
+        console.log('=== Camera Support Check ===');
+        console.log('Protocol:', location.protocol);
+        console.log('Hostname:', location.hostname);
+        console.log('Host:', location.host);
+        console.log('User Agent:', navigator.userAgent);
+        
+        // Detailed mediaDevices debugging
+        console.log('navigator.mediaDevices exists:', !!navigator.mediaDevices);
+        if (navigator.mediaDevices) {
+            console.log('navigator.mediaDevices.getUserMedia exists:', !!navigator.mediaDevices.getUserMedia);
+            console.log('navigator.mediaDevices.enumerateDevices exists:', !!navigator.mediaDevices.enumerateDevices);
+        }
+        
+        // Check for legacy getUserMedia support
+        console.log('Legacy navigator.getUserMedia exists:', !!(navigator.getUserMedia || navigator.webkitGetUserMedia || navigator.mozGetUserMedia || navigator.msGetUserMedia));
+        
+        console.log('getUserMedia supported:', !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia));
+        
+        // Check if getUserMedia is supported
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            console.log('getUserMedia not supported');
+            
+            // Check if it's a Firefox privacy issue
+            const isFirefox = navigator.userAgent.includes('Firefox');
+            if (isFirefox) {
+                console.log('Firefox detected - checking for privacy settings issues');
+                console.log('Firefox version:', navigator.userAgent.match(/Firefox\/(\d+)/)?.[1] || 'unknown');
+                
+                // Provide specific Firefox guidance
+                this.showToast('Camera access blocked. In Firefox, go to about:config and set media.navigator.enabled to true, or check privacy settings.', 'error');
+            } else {
+                this.showToast('Camera not supported in this browser. Use file upload instead.', 'error');
+            }
+            
+            this.cameraSupported = false;
+            return;
+        }
+        
+        // Enhanced local network detection
+        const isLocalNetwork = this.isLocalNetwork();
+        console.log('Is local network:', isLocalNetwork);
+        
+        // Check protocol and network requirements
+        if (location.protocol !== 'https:' && !isLocalNetwork) {
+            console.log('HTTPS or local network required for camera access');
+            this.cameraSupported = false;
+            this.showToast('HTTPS or local network required for camera access. Please use https:// or connect to local network.', 'error');
+            return;
+        }
+        
+        // Test camera permissions
+        const permissionsOk = await this.testCameraPermissions();
+        if (!permissionsOk) {
+            console.log('Camera permissions test failed');
+            this.cameraSupported = false;
+            this.showToast('Camera permissions denied. Please allow camera access and refresh the page.', 'error');
+            return;
+        }
+        
+        // iOS Safari specific checks
+        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+        const isSafari = /Safari/.test(navigator.userAgent) && !/Chrome/.test(navigator.userAgent);
+        
+        if (isIOS && isSafari) {
+            console.log('iOS Safari detected - additional checks may be needed');
+            // iOS Safari sometimes needs explicit user interaction for camera access
+            // We'll let the camera initialization handle this
+        }
+        
+        this.cameraSupported = true;
+        console.log('Camera support detected - proceeding with camera initialization');
+    }
+    
+    isLocalNetwork() {
+        const hostname = location.hostname;
+        
+        // Check for localhost variations
+        if (hostname === 'localhost' || hostname === '127.0.0.1') {
+            return true;
+        }
+        
+        // Check for .local domains
+        if (hostname.endsWith('.local')) {
+            return true;
+        }
+        
+        // Check for private IP ranges
+        const privateRanges = [
+            /^10\./,           // 10.0.0.0/8
+            /^172\.(1[6-9]|2[0-9]|3[0-1])\./, // 172.16.0.0/12
+            /^192\.168\./      // 192.168.0.0/16
+        ];
+        
+        for (const range of privateRanges) {
+            if (range.test(hostname)) {
+                return true;
+            }
+        }
+        
+        // Additional check for IP addresses that might be local
+        // This handles cases where the hostname is an IP address
+        if (/^\d+\.\d+\.\d+\.\d+$/.test(hostname)) {
+            const parts = hostname.split('.').map(Number);
+            if (parts[0] === 10 || 
+                (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) ||
+                (parts[0] === 192 && parts[1] === 168)) {
+                return true;
+            }
+        }
+        
+        return false;
     }
     
     bindEvents() {
@@ -50,8 +200,21 @@ class SelfiePortal {
     }
     
     async initCamera() {
+        if (!this.cameraSupported) {
+            console.log('Camera not supported - disabling features');
+            this.disableCameraFeatures();
+            return;
+        }
+        
         try {
-            const constraints = {
+            console.log('=== Camera Initialization ===');
+            console.log('Current facing mode:', this.currentFacingMode);
+            
+            // iOS Safari specific constraints
+            const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+            const isSafari = /Safari/.test(navigator.userAgent) && !/Chrome/.test(navigator.userAgent);
+            
+            let constraints = {
                 video: {
                     facingMode: this.currentFacingMode,
                     width: { ideal: 1280 },
@@ -59,18 +222,98 @@ class SelfiePortal {
                 }
             };
             
+            // iOS Safari sometimes needs different constraints
+            if (isIOS && isSafari) {
+                console.log('iOS Safari detected - using iOS-specific constraints');
+                constraints = {
+                    video: {
+                        facingMode: this.currentFacingMode,
+                        width: { min: 640, ideal: 1280, max: 1920 },
+                        height: { min: 480, ideal: 720, max: 1080 }
+                    }
+                };
+            }
+            
+            console.log('Requesting camera with constraints:', constraints);
+            
             this.stream = await navigator.mediaDevices.getUserMedia(constraints);
+            console.log('Camera stream obtained:', this.stream);
+            
             this.video.srcObject = this.stream;
             
-            this.showToast('Camera ready!', 'success');
+            // Wait for video to be ready
+            this.video.onloadedmetadata = () => {
+                console.log('Camera ready - video metadata loaded');
+                console.log('Video dimensions:', this.video.videoWidth, 'x', this.video.videoHeight);
+                this.showToast('Camera ready!', 'success');
+            };
+            
+            this.video.onerror = (error) => {
+                console.error('Video error:', error);
+                this.showToast('Camera error occurred', 'error');
+            };
+            
+            // Additional iOS Safari handling
+            if (isIOS && isSafari) {
+                console.log('iOS Safari: Waiting for user interaction before enabling camera');
+                // iOS Safari might need a user interaction to fully enable the camera
+                this.video.oncanplay = () => {
+                    console.log('iOS Safari: Video can play - camera should be working');
+                };
+            }
+            
         } catch (error) {
-            console.error('Camera access error:', error);
-            this.showToast('Camera access denied. Please allow camera permissions.', 'error');
+            console.error('=== Camera Access Error ===');
+            console.error('Error name:', error.name);
+            console.error('Error message:', error.message);
+            console.error('Error stack:', error.stack);
+            
+            // Provide specific error messages with more detail
+            let errorMessage = 'Camera access failed';
+            
+            if (error.name === 'NotAllowedError') {
+                errorMessage = 'Camera access denied. Please allow camera permissions in your browser settings and refresh the page.';
+                console.log('User denied camera permission');
+            } else if (error.name === 'NotFoundError') {
+                errorMessage = 'No camera found on this device. Please check if your device has a camera.';
+                console.log('No camera hardware found');
+            } else if (error.name === 'NotSupportedError') {
+                errorMessage = 'Camera not supported on this device or browser. Try using a different browser.';
+                console.log('Camera not supported by browser/device');
+            } else if (error.name === 'NotReadableError') {
+                errorMessage = 'Camera is in use by another application. Please close other apps using the camera and try again.';
+                console.log('Camera is busy with another application');
+            } else if (error.name === 'OverconstrainedError') {
+                errorMessage = 'Camera constraints not supported. Trying with different settings...';
+                console.log('Camera constraints not supported - trying fallback');
+                // Try with simpler constraints
+                try {
+                    const fallbackConstraints = { video: true };
+                    console.log('Trying fallback constraints:', fallbackConstraints);
+                    this.stream = await navigator.mediaDevices.getUserMedia(fallbackConstraints);
+                    this.video.srcObject = this.stream;
+                    this.showToast('Camera initialized with fallback settings!', 'success');
+                    return;
+                } catch (fallbackError) {
+                    console.error('Fallback camera initialization failed:', fallbackError);
+                    errorMessage = 'Camera initialization failed. Please try refreshing the page.';
+                }
+            } else {
+                errorMessage = `Camera error: ${error.message}. Please try refreshing the page.`;
+                console.log('Unknown camera error');
+            }
+            
+            this.showToast(errorMessage, 'error');
             this.disableCameraFeatures();
         }
     }
     
     async switchCamera() {
+        if (!this.cameraSupported) {
+            this.showToast('Camera switching not supported', 'error');
+            return;
+        }
+        
         if (this.stream) {
             this.stream.getTracks().forEach(track => track.stop());
         }
@@ -78,6 +321,7 @@ class SelfiePortal {
         this.currentFacingMode = this.currentFacingMode === 'user' ? 'environment' : 'user';
         
         try {
+            console.log('Switching camera to:', this.currentFacingMode);
             const constraints = {
                 video: {
                     facingMode: this.currentFacingMode,
@@ -102,19 +346,30 @@ class SelfiePortal {
             return;
         }
         
-        const context = this.canvas.getContext('2d');
-        this.canvas.width = this.video.videoWidth;
-        this.canvas.height = this.video.videoHeight;
+        if (this.video.videoWidth === 0 || this.video.videoHeight === 0) {
+            this.showToast('Camera not ready yet. Please wait...', 'error');
+            return;
+        }
         
-        // Draw the video frame to canvas
-        context.drawImage(this.video, 0, 0, this.canvas.width, this.canvas.height);
-        
-        // Convert to blob
-        this.canvas.toBlob((blob) => {
-            this.capturedImageData = blob;
-            this.previewImage.src = URL.createObjectURL(blob);
-            this.showPreview();
-        }, 'image/jpeg', 0.8);
+        try {
+            const context = this.canvas.getContext('2d');
+            this.canvas.width = this.video.videoWidth;
+            this.canvas.height = this.video.videoHeight;
+            
+            // Draw the video frame to canvas
+            context.drawImage(this.video, 0, 0, this.canvas.width, this.canvas.height);
+            
+            // Convert to blob
+            this.canvas.toBlob((blob) => {
+                this.capturedImageData = blob;
+                this.previewImage.src = URL.createObjectURL(blob);
+                this.showPreview();
+                console.log('Photo captured successfully');
+            }, 'image/jpeg', 0.8);
+        } catch (error) {
+            console.error('Photo capture error:', error);
+            this.showToast('Failed to capture photo', 'error');
+        }
     }
     
     showPreview() {
@@ -148,7 +403,7 @@ class SelfiePortal {
         formData.append('caption', this.captionInput.value);
         
         try {
-            const response = await fetch('/upload', {
+            const response = await fetch('/selfies/upload', {
                 method: 'POST',
                 body: formData
             });
@@ -180,7 +435,7 @@ class SelfiePortal {
     
     async refreshGallery() {
         try {
-            const response = await fetch('/api/selfies');
+            const response = await fetch('/selfies/api/selfies');
             const selfies = await response.json();
             this.updateGallery(selfies);
         } catch (error) {
@@ -220,9 +475,9 @@ class SelfiePortal {
         
         card.innerHTML = `
             <div class="selfie-image">
-                <img src="/data/uploads/${selfie.filename}" alt="Selfie" loading="lazy">
+                <img src="/selfies/data/uploads/${selfie.filename}" alt="Selfie" loading="lazy">
                 <div class="selfie-overlay">
-                    <a href="/view/${selfie.id}" class="view-btn">
+                    <a href="/selfies/view/${selfie.id}" class="view-btn">
                         <i class="fas fa-eye"></i>
                     </a>
                 </div>
@@ -270,10 +525,40 @@ class SelfiePortal {
     }
     
     disableCameraFeatures() {
-        this.captureBtn.disabled = true;
-        this.switchCameraBtn.disabled = true;
-        this.captureBtn.textContent = 'Camera Unavailable';
-        this.switchCameraBtn.textContent = 'Switch Unavailable';
+        if (this.captureBtn) {
+            this.captureBtn.disabled = true;
+            this.captureBtn.innerHTML = '<i class="fas fa-image"></i> Choose Photo';
+            this.captureBtn.onclick = () => this.setupFileInput();
+        }
+        if (this.switchCameraBtn) {
+            this.switchCameraBtn.disabled = true;
+            this.switchCameraBtn.textContent = 'Switch Unavailable';
+        }
+    }
+    
+    setupFileInput() {
+        const fileInput = document.createElement('input');
+        fileInput.type = 'file';
+        fileInput.accept = 'image/*';
+        fileInput.capture = 'user';
+        fileInput.style.display = 'none';
+        
+        fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    this.capturedImageData = file;
+                    this.previewImage.src = e.target.result;
+                    this.showPreview();
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+        
+        document.body.appendChild(fileInput);
+        fileInput.click();
+        document.body.removeChild(fileInput);
     }
     
     showToast(message, type = 'info') {
@@ -286,7 +571,7 @@ class SelfiePortal {
         
         setTimeout(() => {
             toast.style.display = 'none';
-        }, 3000);
+        }, 5000); // Show for 5 seconds for error messages
     }
 }
 
@@ -341,37 +626,8 @@ document.addEventListener('touchend', (e) => {
     }
 });
 
-// Handle file input fallback for devices without camera
-function setupFileInput() {
-    const fileInput = document.createElement('input');
-    fileInput.type = 'file';
-    fileInput.accept = 'image/*';
-    fileInput.capture = 'user';
-    fileInput.style.display = 'none';
-    
-    fileInput.addEventListener('change', (e) => {
-        const file = e.target.files[0];
-        if (file) {
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                const img = document.getElementById('previewImage');
-                img.src = e.target.result;
-                document.getElementById('previewSection').style.display = 'block';
-                document.getElementById('cameraSection').style.display = 'none';
-            };
-            reader.readAsDataURL(file);
-        }
-    });
-    
-    document.body.appendChild(fileInput);
-    
-    // Add fallback button if camera is not available
-    const captureBtn = document.getElementById('captureBtn');
-    if (captureBtn && !navigator.mediaDevices) {
-        captureBtn.onclick = () => fileInput.click();
-        captureBtn.innerHTML = '<i class="fas fa-image"></i> Choose Photo';
-    }
-}
-
-// Initialize file input fallback
-setupFileInput(); 
+// Debug information
+console.log('Selfie Portal loaded');
+console.log('Protocol:', location.protocol);
+console.log('Hostname:', location.hostname);
+console.log('getUserMedia supported:', !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)); 

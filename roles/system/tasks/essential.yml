@@ -502,9 +502,6 @@
      command: systemctl --user enable register-device.timer
      tags: DeviceRegistration
 
-   - name: Copy avahi settings
-     copy:
-       src: "{{ root_playbook_dir }}/etc/avahi/avahi-daemon.conf"
-       dest: /etc/avahi/avahi-daemon.conf
+
 
 

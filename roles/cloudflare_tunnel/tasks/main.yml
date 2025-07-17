@@ -1,0 +1,60 @@
+---
+- name: Create cloudflared configuration directory
+  file:
+    path: "{{ cloudflare_tunnel.config_dir }}"
+    state: directory
+    owner: "{{ cloudflare_tunnel.user }}"
+    group: "{{ cloudflare_tunnel.group }}"
+    mode: '0755'
+
+- name: Create cloudflared credentials directory
+  file:
+    path: "/home/{{ cloudflare_tunnel.user }}/.cloudflared"
+    state: directory
+    owner: "{{ cloudflare_tunnel.user }}"
+    group: "{{ cloudflare_tunnel.group }}"
+    mode: '0700'
+
+- name: Download cloudflared binary
+  get_url:
+    url: "{{ cloudflare_tunnel.binary_url }}"
+    dest: "{{ cloudflare_tunnel.binary_path }}"
+    mode: '0755'
+    owner: root
+    group: root
+  register: cloudflared_download
+
+- name: Copy tunnel credentials file
+  copy:
+    src: "{{ cloudflare_tunnel.credentials_file }}"
+    dest: "/home/{{ cloudflare_tunnel.user }}/.cloudflared/{{ cloudflare_tunnel.name }}.json"
+    owner: "{{ cloudflare_tunnel.user }}"
+    group: "{{ cloudflare_tunnel.group }}"
+    mode: '0600'
+  when: cloudflare_tunnel.credentials_file is file
+
+- name: Create cloudflared config.yml
+  template:
+    src: config.yml.j2
+    dest: "{{ cloudflare_tunnel.config_dir }}/config.yml"
+    owner: "{{ cloudflare_tunnel.user }}"
+    group: "{{ cloudflare_tunnel.group }}"
+    mode: '0644'
+  notify: restart cloudflared
+
+- name: Create systemd service template
+  template:
+    src: cloudflared@.service.j2
+    dest: /etc/systemd/system/cloudflared@.service
+    owner: root
+    group: root
+    mode: '0644'
+  notify: restart cloudflared
+
+- name: Enable and start cloudflared service
+  systemd:
+    name: "{{ cloudflare_tunnel.service_name }}"
+    state: started
+    enabled: yes
+    daemon_reload: yes
+  notify: restart cloudflared 

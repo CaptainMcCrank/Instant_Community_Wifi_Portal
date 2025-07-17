@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Selfie View - Community WiFi</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet" href="/selfies/static/style.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 </head>
@@ -13,7 +13,7 @@
         <!-- Header -->
         <header class="header">
             <div class="header-content">
-                <a href="{{ url_for('index') }}" class="back-btn">
+                <a href="/selfies/" class="back-btn">
                     <i class="fas fa-arrow-left"></i>
                 </a>
                 <h1>Selfie View</h1>
@@ -23,7 +23,7 @@
         <!-- Selfie Display -->
         <section class="selfie-view">
             <div class="selfie-container">
-                <img src="{{ url_for('uploaded_file', filename=selfie.filename) }}" 
+                <img src="/selfies/data/uploads/{{ selfie.filename }}" 
                      alt="Selfie" class="selfie-full">
                 
                 <div class="selfie-details">
@@ -71,11 +71,11 @@
 
         <!-- Navigation -->
         <nav class="bottom-nav">
-            <a href="{{ url_for('index') }}" class="nav-item">
+            <a href="/selfies/" class="nav-item">
                 <i class="fas fa-camera"></i>
                 <span>Camera</span>
             </a>
-            <a href="{{ url_for('index') }}" class="nav-item">
+            <a href="/selfies/" class="nav-item">
                 <i class="fas fa-images"></i>
                 <span>Gallery</span>
             </a>
@@ -91,7 +91,7 @@
 
     <script>
         const selfieId = '{{ selfie.id }}';
-        const imageUrl = '{{ url_for("uploaded_file", filename=selfie.filename) }}';
+        const imageUrl = '/selfies/data/uploads/{{ selfie.filename }}';
 
         function showToast(message, type = 'info') {
             const toast = document.getElementById('toast');
@@ -133,7 +133,7 @@
 
         function deleteSelfie() {
             if (confirm('Are you sure you want to delete this selfie? This action cannot be undone.')) {
-                fetch(`/delete/${selfieId}`, {
+                fetch(`/selfies/delete/${selfieId}`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
@@ -144,7 +144,7 @@
                     if (data.success) {
                         showToast('Selfie deleted successfully!', 'success');
                         setTimeout(() => {
-                            window.location.href = '{{ url_for("index") }}';
+                            window.location.href = '/selfies/';
                         }, 1500);
                     } else {
                         showToast('Failed to delete selfie', 'error');

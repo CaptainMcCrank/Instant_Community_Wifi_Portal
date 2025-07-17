@@ -1,0 +1,108 @@
+---
+- name: Create systemd service file for selfie app
+  copy:
+    dest: "/etc/systemd/system/{{ selfie_app.service_name }}.service"
+    content: |
+      [Unit]
+      Description={{ selfie_app.service_description }}
+      After=network.target
+      Wants=network.target
+
+      [Service]
+      Type=simple
+      User={{ selfie_app.app_user }}
+      Group={{ selfie_app.app_group }}
+      WorkingDirectory={{ selfie_app.app_root }}
+      Environment=PATH={{ selfie_app.app_root }}/{{ selfie_app.venv_path }}/bin
+      ExecStart={{ selfie_app.app_root }}/{{ selfie_app.venv_path }}/bin/python app.py
+      Restart=always
+      RestartSec=10
+
+      [Install]
+      WantedBy=multi-user.target
+    owner: root
+    group: root
+    mode: '0644'
+  tags:
+    - selfie_app
+    - configure
+
+- name: Set proper permissions for selfie app data directory
+  file:
+    path: "{{ selfie_app.app_root }}/data"
+    owner: "{{ selfie_app.app_user }}"
+    group: "{{ selfie_app.app_group }}"
+    mode: '0755'
+    recurse: yes
+  tags:
+    - selfie_app
+    - configure
+
+- name: Configure nginx for selfie app
+  copy:
+    dest: "/etc/nginx/sites-available/{{ selfie_app.nginx_site_name }}"
+    content: |
+      server {
+          listen 80;
+          server_name {{ hostname }};
+          
+          # Selfie portal location
+          location {{ selfie_app.nginx_proxy_path }} {
+              proxy_pass http://127.0.0.1:{{ selfie_app.app_port }};
+              proxy_set_header Host $host;
+              proxy_set_header X-Real-IP $remote_addr;
+              proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+              proxy_set_header X-Forwarded-Proto $scheme;
+              
+              # Handle large file uploads
+              client_max_body_size {{ selfie_app.max_file_size }};
+              proxy_read_timeout 300s;
+              proxy_connect_timeout 75s;
+          }
+          
+          # Serve uploaded images directly
+          location {{ selfie_app.nginx_proxy_path }}/data/uploads/ {
+              alias {{ selfie_app.app_root }}/{{ selfie_app.upload_dir }}/;
+              expires 1d;
+              add_header Cache-Control "public, immutable";
+          }
+          
+          # Main community site (existing configuration)
+          location / {
+              proxy_pass http://127.0.0.1:8080;
+              proxy_set_header Host $host;
+              proxy_set_header X-Real-IP $remote_addr;
+              proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+              proxy_set_header X-Forwarded-Proto $scheme;
+          }
+      }
+    owner: root
+    group: root
+    mode: '0644'
+  tags:
+    - selfie_app
+    - configure
+
+- name: Enable selfie app nginx site
+  file:
+    src: "/etc/nginx/sites-available/{{ selfie_app.nginx_site_name }}"
+    dest: "/etc/nginx/sites-enabled/{{ selfie_app.nginx_site_name }}"
+    state: link
+  tags:
+    - selfie_app
+    - configure
+
+- name: Test nginx configuration
+  command: nginx -t
+  tags:
+    - selfie_app
+    - configure
+
+- name: Reload nginx
+  systemd:
+    name: nginx
+    state: reloaded
+  tags:
+    - selfie_app
+    - configure
+

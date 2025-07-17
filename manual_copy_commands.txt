@@ -1,0 +1,28 @@
+Manual Copy Commands for Static Files
+
+If the automated script doesn't work, you can manually copy the files:
+
+1. From your development machine, copy the style.css file:
+   scp var/www/ansibledest.local/apps/selfies/static/style.css pi@10.42.0.1:/tmp/style.css
+
+2. SSH into the Pi and move the file to the correct location:
+   ssh pi@10.42.0.1
+   sudo mv /tmp/style.css /var/www/ansibledest.local/apps/selfies/static/style.css
+   sudo chown www-data:www-data /var/www/ansibledest.local/apps/selfies/static/style.css
+   sudo chmod 644 /var/www/ansibledest.local/apps/selfies/static/style.css
+
+3. Verify the file exists:
+   ls -la /var/www/ansibledest.local/apps/selfies/static/style.css
+
+4. Test the file access:
+   curl -I http://localhost/selfies/static/style.css
+
+Alternative: If you have the files on a USB drive or can access them another way:
+
+1. Copy the entire static directory:
+   sudo cp -r /path/to/static/* /var/www/ansibledest.local/apps/selfies/static/
+   sudo chown -R www-data:www-data /var/www/ansibledest.local/apps/selfies/static/
+   sudo chmod -R 644 /var/www/ansibledest.local/apps/selfies/static/
+
+2. Make sure the directory is readable:
+   sudo chmod 755 /var/www/ansibledest.local/apps/selfies/static/ 

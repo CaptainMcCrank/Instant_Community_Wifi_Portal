@@ -1,0 +1,19 @@
+---
+galaxy_info:
+  author: DevOps Engineer
+  description: Ansible role to deploy Cloudflare Tunnel on Raspberry Pi OS
+  company: Community
+  license: "MIT"
+  min_ansible_version: 2.9
+  platforms:
+    - name: Debian
+      versions:
+        - all
+  galaxy_tags:
+    - cloudflare
+    - tunnel
+    - raspberry-pi
+    - networking
+    - security
+
+dependencies: [] 

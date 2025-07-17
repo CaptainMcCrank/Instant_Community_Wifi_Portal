@@ -1,10 +1,15 @@
 [Unit]
 Description=Service that launches Nodogsplash captive portal
+After=network.target network-online.target dnsmasq.service
+Wants=network-online.target
+Requires=dnsmasq.service
 
 [Service]
 Type=forking
 ExecStart=/usr/bin/nodogsplash
 User=root
+Restart=always
+RestartSec=10
 
 [Install]
 WantedBy=multi-user.target

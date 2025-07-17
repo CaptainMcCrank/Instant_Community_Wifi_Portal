@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Selfie Portal - Community WiFi</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet" href="/static/style.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 </head>
@@ -14,9 +14,28 @@
         <header class="header">
             <div class="header-content">
                 <h1><i class="fas fa-camera"></i> Selfie Portal</h1>
-                <p>Share your moment with the community</p>
+                <p>A message from Tibbins the Wifi Gnome</p>
             </div>
         </header>
+
+        <!-- Gnome Introduction Section -->
+        <section class="gnome-intro">
+            <div class="gnome-content">
+                <div class="gnome-avatar">
+                    <i class="fas fa-hat-wizard gnome-icon"></i>
+                </div>
+                <div class="gnome-message">
+                    <h2><i class="fas fa-sparkles"></i> Hullo hullo, twinkle-toes!</h2>
+                    <div class="gnome-text">
+                        <p>Well met and thrice welcome, wanderer of the wire! I'm Tibbins the WiFi Gnome, keeper of this curious little corner of the net — not the internet, mind you, just this net, spun from local bits and fizzy sparks. I've sniffed your signal, and oh-ho! What a splendid scent of curiosity and mirth! That means you're a Friend of the Realm, and you've stumbled into a most secret tradition…</p>
+                        
+                        <p>You see, I'm building a Grand Gallery of Humankind — a patchwork of cheerful mugs, solemn stares, silly faces, and all the wonders that dwell behind your blinking eyes. Why? Because gnomes can't agree what humans really look like! Some say you've got squirrel teeth and cabbage knees. Others insist you sparkle when sneezing. So help settle our squabbles: take a jolly selfie and share it here! I'll hoist it up on the wall and toast your visage with a burst of celebratory nonsense!</p>
+                        
+                        <p class="gnome-signature"><strong>Upload your image, dear guest, and let the gnome-magic do the rest!</strong></p>
+                    </div>
+                </div>
+            </div>
+        </section>
 
         <!-- Camera Section -->
         <section class="camera-section" id="cameraSection">
@@ -130,6 +149,6 @@
     <!-- Toast Notifications -->
     <div id="toast" class="toast"></div>
 
-    <script src="{{ url_for('static', filename='upload.js') }}"></script>
+    <script src="/static/upload.js"></script>
 </body>
 </html> 

@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gnome Introduction Test</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        /* Reset and Base Styles */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+            line-height: 1.6;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        /* Gnome Introduction Styles */
+        .gnome-intro {
+            background: linear-gradient(135deg, #f7fafc 0%, #edf2f7 100%);
+            margin: 1rem;
+            border-radius: 20px;
+            padding: 2rem;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            border: 2px solid rgba(102, 126, 234, 0.2);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .gnome-intro::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle, rgba(102, 126, 234, 0.1) 0%, transparent 70%);
+            animation: sparkle 4s ease-in-out infinite;
+            pointer-events: none;
+        }
+
+        @keyframes sparkle {
+            0%, 100% { transform: rotate(0deg) scale(1); opacity: 0.3; }
+            50% { transform: rotate(180deg) scale(1.1); opacity: 0.6; }
+        }
+
+        .gnome-content {
+            display: flex;
+            align-items: flex-start;
+            gap: 1.5rem;
+            position: relative;
+            z-index: 1;
+        }
+
+        .gnome-avatar {
+            flex-shrink: 0;
+            width: 80px;
+            height: 80px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 20px rgba(102, 126, 234, 0.4);
+            border: 3px solid rgba(255, 255, 255, 0.8);
+        }
+
+        .gnome-icon {
+            font-size: 2.5rem;
+            color: white;
+            animation: bounce 2s ease-in-out infinite;
+        }
+
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-5px); }
+        }
+
+        .gnome-message {
+            flex: 1;
+        }
+
+        .gnome-message h2 {
+            font-size: 1.4rem;
+            font-weight: 600;
+            color: #2d3748;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .gnome-message h2 i {
+            color: #667eea;
+            animation: twinkle 1.5s ease-in-out infinite;
+        }
+
+        @keyframes twinkle {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.7; transform: scale(1.1); }
+        }
+
+        .gnome-text {
+            color: #4a5568;
+            line-height: 1.7;
+            font-size: 0.95rem;
+        }
+
+        .gnome-text p {
+            margin-bottom: 1rem;
+            text-align: justify;
+        }
+
+        .gnome-text p:last-child {
+            margin-bottom: 0;
+        }
+
+        .gnome-signature {
+            font-style: italic;
+            color: #667eea !important;
+            text-align: center !important;
+            font-size: 1rem !important;
+            margin-top: 1.5rem !important;
+            padding: 1rem;
+            background: rgba(102, 126, 234, 0.1);
+            border-radius: 12px;
+            border-left: 4px solid #667eea;
+        }
+
+        /* Responsive Design */
+        @media (max-width: 480px) {
+            .gnome-intro {
+                margin: 0.5rem;
+                padding: 1.5rem;
+            }
+            
+            .gnome-content {
+                flex-direction: column;
+                text-align: center;
+                gap: 1rem;
+            }
+            
+            .gnome-avatar {
+                align-self: center;
+                width: 70px;
+                height: 70px;
+            }
+            
+            .gnome-icon {
+                font-size: 2rem;
+            }
+            
+            .gnome-message h2 {
+                font-size: 1.2rem;
+                justify-content: center;
+            }
+            
+            .gnome-text {
+                font-size: 0.9rem;
+            }
+            
+            .gnome-signature {
+                font-size: 0.9rem !important;
+                padding: 0.75rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Gnome Introduction Section -->
+        <section class="gnome-intro">
+            <div class="gnome-content">
+                <div class="gnome-avatar">
+                    <i class="fas fa-hat-wizard gnome-icon"></i>
+                </div>
+                <div class="gnome-message">
+                    <h2><i class="fas fa-sparkles"></i> A Message from Tibbins the WiFi Gnome</h2>
+                    <div class="gnome-text">
+                        <p>Hullo hullo, twinkle-toes! Well met and thrice welcome, wanderer of the wire! I'm Tibbins the WiFi Gnome, keeper of this curious little corner of the net — not the internet, mind you, just this net, spun from local bits and fizzy sparks. I've sniffed your signal, and oh-ho! What a splendid scent of curiosity and mirth! That means you're a Friend of the Realm, and you've stumbled into a most secret tradition…</p>
+                        
+                        <p>You see, I'm building a Grand Gallery of Humankind — a patchwork of cheerful mugs, solemn stares, silly faces, and all the wonders that dwell behind your blinking eyes. Why? Because gnomes can't agree what humans really look like! Some say you've got squirrel teeth and cabbage knees. Others insist you sparkle when sneezing. So help settle our squabbles: take a jolly selfie and share it here! I'll hoist it up on the wall and toast your visage with a burst of celebratory nonsense!</p>
+                        
+                        <p class="gnome-signature"><strong>Upload your image, dear guest, and let the gnome-magic do the rest!</strong></p>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </div>
+</body>
+</html> 

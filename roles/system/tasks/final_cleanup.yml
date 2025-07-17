@@ -51,6 +51,11 @@
      ansible.builtin.hostname:
        name: "{{ hostname }}"
 
+   - name: Copy avahi settings
+     copy:
+       src: "{{ root_playbook_dir }}/etc/avahi/avahi-daemon.conf"
+       dest: /etc/avahi/avahi-daemon.conf
+
    - name: Copy /etc/hosts file #Likely needs updates if I change interfaces
      copy:
        src: "{{ root_playbook_dir }}/etc/hosts"

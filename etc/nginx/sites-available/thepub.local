@@ -1,43 +1,45 @@
 server {
-    server_name thepub.local www.thepub.local;
-    return 301 https://$host$request_uri;
+	listen 80;
+	server_name thepub.local www.thepub.local bidding-sought-tongue-essex.trycloudflare.com selfies.griffincreektrestle.net;
+	access_log /var/log/nginx/access.log combined;
+	error_log /var/log/nginx/error.log warn;
+	client_max_body_size 28M;
 
-    access_log off;
-    error_log off;
-}
+        location /selfies/static/ {
+        	alias /var/www/thepub.local/apps/selfies/static/;
+        	expires 1d;
+        	add_header Cache-Control "public, immutable";
+        	try_files $uri =404;
+    	}
+    	
+	# Serve uploaded images directly
+    	location /selfies/data/uploads/ {
+        	alias /var/www/thepub.local/apps/selfies/data/uploads/;
+        	expires 1d;
+        	add_header Cache-Control "public, immutable";
+    	}
 
-server {
-    listen 443 ssl default_server;
-    #ssl_certificate /etc/letsencrypt/live/thepub.local/fullchain.pem;
-    ssl_certificate /etc/ssl/certs/nginx-selfsigned.crt;
-	  
-    #ssl_certificate_key /etc/letsencrypt/live/thepub.local/privkey.pem;
-    ssl_certificate_key /etc/ssl/private/nginx-selfsigned.key;
+    	# Selfie portal location (proxy everything else to Flask)
+	#location /selfies {
+    	location / {
+        	proxy_pass http://127.0.0.1:5001;
+        	proxy_set_header Host $host;
+        	proxy_set_header X-Real-IP $remote_addr;
+        	proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+		proxy_set_header X-Forwarded-Proto http;
 
-    ssl_protocols TLSv1 TLSv1.1 TLSv1.2;
-    ssl_prefer_server_ciphers on;
-
-    add_header Strict-Transport-Security "max-age=31536000";
-
-    ssl_ciphers 'ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES256-GCM-SHA384:DHE-RSA-AES128-GCM-SHA256:DHE-DSS-AES128-GCM-SHA256:kEDH+AESGCM:ECDHE-RSA-AES128-SHA256:ECDHE-ECDSA-AES128-SHA256:ECDHE-RSA-AES128-SHA:ECDHE-ECDSA-AES128-SHA:ECDHE-RSA-AES256-SHA384:ECDHE-ECDSA-AES256-SHA384:ECDHE-RSA-AES256-SHA:ECDHE-ECDSA-AES256-SHA:DHE-RSA-AES128-SHA256:DHE-RSA-AES128-SHA:DHE-DSS-AES128-SHA256:DHE-RSA-AES256-SHA256:DHE-DSS-AES256-SHA:DHE-RSA-AES256-SHA:AES128-GCM-SHA256:AES256-GCM-SHA384:AES128-SHA256:AES256-SHA256:AES128-SHA:AES256-SHA:AES:CAMELLIA:DES-CBC3-SHA:!aNULL:!eNULL:!EXPORT:!DES:!RC4:!MD5:!PSK:!aECDH:!EDH-DSS-DES-CBC3-SHA:!EDH-RSA-DES-CBC3-SHA:!KRB5-DES-CBC3-SHA';
-    ssl_dhparam /etc/nginx/ssl/dhparams-thepub.local.pem;
-
-    ssl_session_cache shared:SSL:10m;
-    ssl_session_timeout 10m;
-
-    server_name thepub.local www.thepub.local;
-
-    access_log off;
-    error_log off;
-
-    client_max_body_size 28M;
+        # Handle large file uploads
+        client_max_body_size 10M;
+        proxy_read_timeout 300s;
+        proxy_connect_timeout 75s;
+    }
 
     root /var/www/thepub.local/sites/$host/;
     index index.html;
 
-    location / {
-        try_files $uri @werc;
-    }
+    #location / {
+	    #try_files $uri @werc;
+	#}
     location /pub/ {
         root /var/www/thepub.local;
         try_files $uri =404;
@@ -54,3 +56,4 @@ server {
         fastcgi_pass localhost:3333;
     }
 }
+

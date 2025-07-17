@@ -1,0 +1,3 @@
+---
+dependencies:
+  - role: system  # Depends on system role for Python and nginx 

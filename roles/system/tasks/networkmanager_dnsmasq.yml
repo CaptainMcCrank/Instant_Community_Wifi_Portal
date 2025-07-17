@@ -15,6 +15,22 @@
     owner: root
     group: root
 
+- name: Create NetworkManager conf.d directory
+  file:
+    path: /etc/NetworkManager/conf.d
+    state: directory
+    mode: '0755'
+    owner: root
+    group: root
+
+- name: Copy NetworkManager configuration
+  template:
+    src: '{{ root_playbook_dir }}/etc/NetworkManager/conf.d/99-wifi-ap.conf'
+    dest: /etc/NetworkManager/conf.d/99-wifi-ap.conf
+    mode: '0644'
+    owner: root
+    group: root
+
 - name: Restart NetworkManager to apply dnsmasq changes
   systemd:
     name: NetworkManager

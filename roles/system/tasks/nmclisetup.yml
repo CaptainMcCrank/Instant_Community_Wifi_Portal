@@ -3,14 +3,34 @@
       systemd:
         name: hostapd
         state: stopped
-        enabled: no
+        enabled: false
 
     - name: Stop dnsmasq service initially
       systemd:
         name: dnsmasq
         state: stopped
-        enabled: no
+        enabled: false
     
+    # Ensure NetworkManager is installed and running
+    - name: Install NetworkManager
+      apt:
+        name: network-manager
+        state: present
+        update_cache: yes
+
+    - name: Enable and start NetworkManager service
+      systemd:
+        name: NetworkManager
+        enabled: true
+        state: started
+
+    # Wait for NetworkManager to be ready
+    - name: Wait for NetworkManager to be ready
+      wait_for:
+        path: /var/run/NetworkManager/NetworkManager.pid
+        timeout: 30
+      register: nm_ready
+
     # Check if NetworkManager connection exists
     - name: Check if AP connection profile exists
       command: nmcli connection show "{{ ap_name }}"
@@ -26,16 +46,6 @@
       when: nmcli_show_result.rc == 0
 
     # Create the access point connection
-#    - name: Create access point connection
-#      community.general.nmcli:
-#        state: present
-#        type: wifi
-#        conn_name: "{{ ap_name }}"
-#        ifname: "{{ interface_name }}"
-#        wifi:
-#          ssid: "{{ ssid }}"
-#          mode: ap
-
     - name: Create access point connection
       command: >
         nmcli con add type wifi
@@ -46,12 +56,6 @@
         mode ap
 
     # Configure the connection for 2.4GHz band (mode g)
-      
-    # Set specific channel
-    - name: Configure WiFi channel
-      command: nmcli connection modify "{{ ap_name }}" 802-11-wireless.channel 7
-      
-    # Configure to AP mode
     - name: Configure WiFi band, mode, channel, IP Settings IP sharing, Passwordless Auth and Disable IPv6 and autoconnect for AP
       command: >
         nmcli connection modify "{{ ap_name }}"
@@ -66,32 +70,12 @@
         ipv6.method disabled
         connection.autoconnect yes
 
-
     - name: Ensure correct permissions on nmconnection file
       file:
         path: "/etc/NetworkManager/system-connections/{{ ap_name }}.nmconnection"
         mode: '0600'
         owner: root
         group: root
-
-
-    
-    # Create dnsmasq configuration directory
-    #- name: Create dnsmasq directory
-    #  file:
-    #    path: /etc/NetworkManager/dnsmasq-shared.d
-    #    state: directory
-    #    mode: '0755'
-        
-    # Configure DHCP for AP clients
-    #- name: Create custom dnsmasq configuration for AP
-    #  copy:
-    #    dest: /etc/NetworkManager/dnsmasq-shared.d/custom-ap.conf
-    #    content: |
-    #      interface={{ interface_name }}
-    #      dhcp-range=10.10.42.2,10.10.42.252,255.255.255.0,24h
-    #    mode: '0644'
-    
 
     # Activate the access point
     - name: Activate the access point
@@ -100,13 +84,6 @@
       failed_when: ap_activation.rc != 0 and "Unknown connection" not in ap_activation.stderr
       ignore_errors: yes
       
-    # Enable NetworkManager service to start at boot
-    - name: Enable NetworkManager service
-      systemd:
-        name: NetworkManager
-        enabled: yes
-        state: started
-        
     # Check status of the access point
     - name: Check access point status
       command: nmcli connection show "{{ ap_name }}"
@@ -116,3 +93,48 @@
     - name: Display access point status
       debug:
         var: ap_status.stdout_lines
+
+    # Create systemd service for NetworkManager AP management
+    - name: Create NetworkManager AP management service
+      copy:
+        dest: /etc/systemd/system/nm-ap-manager.service
+        content: |
+          [Unit]
+          Description=NetworkManager Access Point Manager
+          After=network.target network-online.target
+          Wants=network-online.target
+          
+          [Service]
+          Type=oneshot
+          RemainAfterExit=yes
+          ExecStart=/bin/bash -c 'nmcli connection up "{{ ap_name }}" || true'
+          ExecStop=/bin/bash -c 'nmcli connection down "{{ ap_name }}" || true'
+          
+          [Install]
+          WantedBy=multi-user.target
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Enable NetworkManager AP management service
+      systemd:
+        name: nm-ap-manager
+        enabled: true
+
+    # Copy verification script
+    - name: Copy WiFi AP verification script
+      copy:
+        src: "{{ root_playbook_dir }}/usr/local/bin/verify-wifi-ap.sh"
+        dest: /usr/local/bin/verify-wifi-ap.sh
+        mode: '0755'
+        owner: root
+        group: root
+
+    - name: Run WiFi AP verification
+      command: /usr/local/bin/verify-wifi-ap.sh
+      register: wifi_verification
+      changed_when: false
+      
+    - name: Display WiFi AP verification results
+      debug:
+        var: wifi_verification.stdout_lines

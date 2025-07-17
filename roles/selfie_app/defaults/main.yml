@@ -1,0 +1,39 @@
+---
+# Selfie App Configuration
+selfie_app:
+  # Application settings
+  app_name: "selfie-portal"
+  app_port: 5001
+  app_user: "www-data"
+  app_group: "www-data"
+  
+  # Directory paths
+  app_root: "/var/www/{{ hostname }}/apps/selfies"
+  upload_dir: "data/uploads"
+  static_dir: "static"
+  templates_dir: "templates"
+  
+  # File settings
+  max_file_size: "10M"
+  max_selfies: 100
+  cleanup_days: 30
+  
+  # Python virtual environment
+  venv_path: "venv"
+  python_version: "python3"
+  
+  # Service settings
+  service_name: "selfie-portal"
+  service_description: "Selfie Portal Flask Application"
+  
+  # Nginx settings (for reference - nginx config handled by nginx role)
+  nginx_site_name: "selfie-portal"
+  nginx_proxy_path: "/selfies"
+  
+  # Allowed file extensions
+  allowed_extensions:
+    - "png"
+    - "jpg" 
+    - "jpeg"
+    - "gif"
+    - "webp" 

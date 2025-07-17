@@ -1,64 +1,32 @@
 ---
-
-   - name: Install hostapd
-     apt:
+   - name: Stop and disable hostapd service
+     systemd:
        name: hostapd
-       state: present
-       update_cache: true
+       state: stopped
+       enabled: no
      tags: hotspot
 
-   - name: Create hostapd Configuration directory
-     file: path=/etc/hostapd/ state=directory mode=0755
+   - name: Mask hostapd service to prevent it from starting
+     command: systemctl mask hostapd.service
      tags: hotspot
 
-   - name: Create hostapd Configuration file from template 
-     ansible.builtin.template:
-       src: "{{ root_playbook_dir }}/templates/hostapd/CaptivePortalAPD.conf.j2"
-       dest: /etc/hostapd/CaptivePortalAPD.conf
-       owner: root
-       group: root
-       mode: 0744
-     tags: hotspot
-  
-   - name: Copy /etc/default/hostapd file
-     copy:
-       src: "{{ root_playbook_dir }}/etc/default/hostapd"
-       dest: /etc/default/hostapd
-       owner: root
-       group: root
-       mode: 0755
+   - name: Remove hostapd configuration files
+     file:
+       path: "{{ item }}"
+       state: absent
+     loop:
+       - /etc/hostapd/CaptivePortalAPD.conf
+       - /etc/hostapd/hostapd.conf
+       - /etc/default/hostapd
      tags: hotspot
 
-   - name: Copy /run/systemd/generator.late file #Likely needs updates if I change interfaces
-     ansible.builtin.copy:
-       src: "{{ root_playbook_dir }}/etc/init.d/hostapd"
-       dest: /etc/init.d/hostapd
-       owner: root
-       group: root
-       mode: 0755
+   - name: Remove hostapd init.d script
+     file:
+       path: /etc/init.d/hostapd
+       state: absent
      tags: hostapd
 
-   - name: unmask hostapd
-     command: systemctl unmask hostapd.service
-     tags: hotspot
-
-   - name: enable hostapd.service
-     command: systemctl enable hostapd.service
-
-
-   - name: enable hostapd (so it launches afterboot)
-     command: update-rc.d hostapd enable
-     tags: base
-
-   - name: Create symbolic link from hostapd.conf to CaptivePortalAPD.conf
-     file:
-       src: /etc/hostapd/CaptivePortalAPD.conf
-       dest: /etc/hostapd/hostapd.conf
-       state: link
-       owner: root
-       group: root
-     tags: hotspot
-
+   # Keep dhcpcd configuration for static IP assignment
    - name: Configure dhcpcd.conf with the selected WiFi interface
      template:
        src: "{{ root_playbook_dir }}/templates/dhcpcd.conf.j2"

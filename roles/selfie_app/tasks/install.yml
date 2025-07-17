@@ -1,0 +1,86 @@
+---
+- name: Create selfie app directory structure
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ selfie_app.app_user }}"
+    group: "{{ selfie_app.app_group }}"
+    mode: '0755'
+  loop:
+    - "{{ selfie_app.app_root }}"
+    - "{{ selfie_app.app_root }}/{{ selfie_app.upload_dir }}"
+    - "{{ selfie_app.app_root }}/{{ selfie_app.static_dir }}"
+    - "{{ selfie_app.app_root }}/{{ selfie_app.templates_dir }}"
+  tags:
+    - selfie_app
+    - install
+
+- name: Copy selfie app Flask application
+  copy:
+    src: "{{ root_playbook_dir }}/var/www/ansibledest.local/apps/selfies/app.py"
+    dest: "{{ selfie_app.app_root }}/app.py"
+    owner: "{{ selfie_app.app_user }}"
+    group: "{{ selfie_app.app_group }}"
+    mode: '0755'
+  tags:
+    - selfie_app
+    - install
+
+- name: Copy selfie app requirements
+  copy:
+    src: "{{ root_playbook_dir }}/var/www/ansibledest.local/apps/selfies/requirements.txt"
+    dest: "{{ selfie_app.app_root }}/requirements.txt"
+    owner: "{{ selfie_app.app_user }}"
+    group: "{{ selfie_app.app_group }}"
+    mode: '0644'
+  tags:
+    - selfie_app
+    - install
+
+- name: Copy selfie app templates
+  synchronize:
+    src: "{{ root_playbook_dir }}/var/www/ansibledest.local/apps/selfies/templates/"
+    dest: "{{ selfie_app.app_root }}/{{ selfie_app.templates_dir }}/"
+    owner: "{{ selfie_app.app_user }}"
+    group: "{{ selfie_app.app_group }}"
+  tags:
+    - selfie_app
+    - install
+
+- name: Copy selfie app static files
+  synchronize:
+    src: "{{ root_playbook_dir }}/var/www/ansibledest.local/apps/selfies/static/"
+    dest: "{{ selfie_app.app_root }}/{{ selfie_app.static_dir }}/"
+    owner: "{{ selfie_app.app_user }}"
+    group: "{{ selfie_app.app_group }}"
+  tags:
+    - selfie_app
+    - install
+
+- name: Create Python virtual environment for selfie app
+  command: "{{ selfie_app.python_version }} -m venv {{ selfie_app.app_root }}/{{ selfie_app.venv_path }}"
+  args:
+    creates: "{{ selfie_app.app_root }}/{{ selfie_app.venv_path }}/bin/activate"
+  tags:
+    - selfie_app
+    - install
+
+- name: Install Python packages in virtual environment
+  pip:
+    requirements: "{{ selfie_app.app_root }}/requirements.txt"
+    virtualenv: "{{ selfie_app.app_root }}/{{ selfie_app.venv_path }}"
+    virtualenv_command: "{{ selfie_app.python_version }} -m venv"
+  tags:
+    - selfie_app
+    - install
+
+- name: Create initial index.json file
+  copy:
+    dest: "{{ selfie_app.app_root }}/data/index.json"
+    content: "[]"
+    owner: "{{ selfie_app.app_user }}"
+    group: "{{ selfie_app.app_group }}"
+    mode: '0644'
+  tags:
+    - selfie_app
+    - install 

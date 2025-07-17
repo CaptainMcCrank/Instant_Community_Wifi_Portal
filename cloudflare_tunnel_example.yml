@@ -1,0 +1,16 @@
+---
+- name: Deploy Cloudflare Tunnel on Raspberry Pi
+  hosts: raspberry_pi
+  become: yes
+  gather_facts: yes
+  
+  vars:
+    # Override default variables if needed
+    cloudflare_tunnel:
+      name: "selfie-portal-1750534817"
+      domain: "selfies.griffincreektrestle.net"
+      local_port: 80
+      credentials_file: "/home/pi/.cloudflared/86c5b63c-cd74-4191-8d5a-0c6119908551.json"
+  
+  roles:
+    - cloudflare_tunnel 

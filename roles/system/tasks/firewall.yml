@@ -24,13 +24,13 @@
        state: enabled
      loop:
        - eth0
-       - {{ wifi_interface }}
+       - "{{ wifi_interface }}"
 
    - name: Allow DNS
      ufw:
        rule: allow
        src: any
-       interface: {{ wifi_interface }}
+       interface: "{{ wifi_interface }}"
        direction: in
        port: '53'
        proto: udp

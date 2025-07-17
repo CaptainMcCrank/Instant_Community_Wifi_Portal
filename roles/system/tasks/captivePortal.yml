@@ -89,6 +89,13 @@
     - nodogsplash
     - streamer
 
+- name: Stop nodogsplash service if running
+  systemd:
+    name: nodogsplash
+    state: stopped
+  ignore_errors: true
+  tags: streamer
+
 - name: install nodogsplash
   become_user: root
   command: chdir=/home/pi/nodogsplash make install
@@ -109,8 +116,8 @@
     regexp: '{{ item }}'
     replace: '{{ hostname }}'
   loop:
-    - 33.33.33.33
-    - na-internet-in-a-box.itm
+    - "{{ wifi_ip }}"
+    - "{{ hostname }}"
 
 - name: Tune Nodogsplash 2
   replace:
@@ -118,8 +125,8 @@
     regexp: '{{ item }}'
     replace: '{{ hostname }}'
   loop:
-    - 33.33.33.33
-    - na-internet-in-a-box.itm
+    - "{{ wifi_ip }}"
+    - "{{ hostname }}"
 #
 
 
@@ -162,11 +169,11 @@
     regexp: RedirectURL http://\{\{ hostname \}\}/
     replace: RedirectURL http://{{ hostname }}/
 
-- name: Tune Nodogsplash 7 Update status.htm
-  lineinfile:
-    path: /etc/nodogsplash/htdocs/status.html
-    regexp: na-internet-in-a-box\.itm
-    line: '{{ hostname }}'
+#- name: Tune Nodogsplash 7 Update status.htm
+#  lineinfile:
+#    path: /etc/nodogsplash/htdocs/status.html
+#    regexp: na-internet-in-a-box\.itm
+#    line: '{{ hostname }}'
 
 - name: enable nodogsplash.service
   command: systemctl enable nodogsplash.service
