@@ -8,6 +8,7 @@ source-directory /etc/network/interfaces.d
 
 allow-hotplug wlan1
 
-allow-hotplug wlan0
-iface wlan0 inet dhcp 
-wpa-conf /etc/wpa_supplicant/wpa_supplicant.conf
+# wlan0 is managed by NetworkManager, not ifupdown
+# allow-hotplug wlan0
+# iface wlan0 inet dhcp 
+# wpa-conf /etc/wpa_supplicant/wpa_supplicant.conf

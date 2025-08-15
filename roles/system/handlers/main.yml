@@ -4,3 +4,14 @@
        name: nginx
        state: restarted
        enabled: yes
+
+   - name: restart dnsmasq
+     systemd:
+       name: dnsmasq
+       state: restarted
+       enabled: yes
+
+   - name: reload NetworkManager
+     systemd:
+       name: NetworkManager
+       state: reloaded

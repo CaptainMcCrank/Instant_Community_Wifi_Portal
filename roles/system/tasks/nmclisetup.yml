@@ -1,22 +1,39 @@
 ---
-    - name: Stop hostapd service initially
-      systemd:
-        name: hostapd
-        state: stopped
-        enabled: false
 
-    - name: Stop dnsmasq service initially
-      systemd:
-        name: dnsmasq
-        state: stopped
-        enabled: false
     
     # Ensure NetworkManager is installed and running
-    - name: Install NetworkManager
+    - name: Check if NetworkManager is already installed
+      command: dpkg -l network-manager
+      register: nm_installed
+      changed_when: false
+      failed_when: false
+
+    - name: Install NetworkManager only if not present
       apt:
-        name: network-manager
+        name: 
+          - network-manager
+          - network-manager-gnome
         state: present
         update_cache: yes
+      when: nm_installed.rc != 0
+
+    - name: Stop conflicting services only if NetworkManager was just installed
+      systemd:
+        name: systemd-networkd
+        state: stopped
+        enabled: false
+      ignore_errors: true
+      when: nm_installed.rc != 0
+
+    - name: Check NetworkManager service status
+      command: systemctl status NetworkManager
+      register: nm_status_check
+      changed_when: false
+      ignore_errors: true
+
+    - name: Display NetworkManager status
+      debug:
+        var: nm_status_check.stdout_lines
 
     - name: Enable and start NetworkManager service
       systemd:
@@ -24,12 +41,168 @@
         enabled: true
         state: started
 
-    # Wait for NetworkManager to be ready
+    - name: Wait a moment for NetworkManager to start
+      pause:
+        seconds: 5
+
+    # Configure wlan0 for DHCP using NetworkManager (safe approach)
+    - name: Check if wlan0 interface exists
+      shell: "ip link show {{ gateway_interface }} >/dev/null 2>&1"
+      register: wlan0_exists
+      changed_when: false
+      ignore_errors: true
+
+    - name: Copy BeepBoop WiFi connection file to NetworkManager
+      copy:
+        src: "{{ root_playbook_dir }}/etc/NetworkManager/system-connections/BeepBoop.nmconnection"
+        dest: /etc/NetworkManager/system-connections/BeepBoop.nmconnection
+        owner: root
+        group: root
+        mode: '0600'
+      when: wlan0_exists.rc == 0
+      notify: reload NetworkManager
+
+    - name: Ensure wlan0 is managed by NetworkManager (not dhcpcd)
+      shell: "nmcli device set {{ gateway_interface }} managed yes"
+      when: wlan0_exists.rc == 0
+      ignore_errors: true
+
+    - name: Reload NetworkManager to pick up new connection files
+      systemd:
+        name: NetworkManager
+        state: reloaded
+      when: wlan0_exists.rc == 0
+
+    # Try alternative approach - check if NetworkManager is running
+    - name: Check if NetworkManager is running
+      command: pgrep NetworkManager
+      register: nm_pgrep
+      changed_when: false
+      ignore_errors: true
+
+    - name: Display NetworkManager process check
+      debug:
+        var: nm_pgrep
+
+    # Wait for NetworkManager to be ready with multiple checks
     - name: Wait for NetworkManager to be ready
       wait_for:
         path: /var/run/NetworkManager/NetworkManager.pid
-        timeout: 30
+        timeout: 60
       register: nm_ready
+      ignore_errors: true
+
+    - name: Check if NetworkManager PID file exists
+      stat:
+        path: /var/run/NetworkManager/NetworkManager.pid
+      register: nm_pid_file
+
+    - name: Display NetworkManager PID file status
+      debug:
+        var: nm_pid_file
+
+    - name: Wait for NetworkManager to be fully initialized
+      command: nmcli general status
+      register: nm_status
+      until: nm_status.rc == 0
+      retries: 15
+      delay: 5
+      changed_when: false
+      ignore_errors: true
+
+    - name: Display final NetworkManager status
+      debug:
+        var: nm_status
+
+    # Debug interface detection
+    - name: Check available network interfaces
+      command: nmcli device status
+      register: nmcli_devices
+      changed_when: false
+      
+    - name: Display available network interfaces
+      debug:
+        var: nmcli_devices.stdout_lines
+
+    - name: Check for WiFi interfaces specifically
+      command: nmcli device wifi list
+      register: nmcli_wifi_devices
+      changed_when: false
+      ignore_errors: true
+      
+    - name: Display WiFi interfaces
+      debug:
+        var: nmcli_wifi_devices.stdout_lines
+
+    # Detect WiFi interface if not specified
+    - name: Detect available WiFi interfaces
+      shell: "nmcli -t -f DEVICE,TYPE device | grep wifi | cut -d: -f1 | head -1"
+      register: available_wifi_interfaces
+      changed_when: false
+      ignore_errors: true
+      
+    - name: Display detected WiFi interfaces
+      debug:
+        var: available_wifi_interfaces.stdout_lines
+
+    - name: Set WiFi interface name with fallback
+      set_fact:
+        wifi_interface: "{{ interface_name | default('wlan1') }}"
+      
+    - name: Check if wlan1 exists
+      shell: "ip link show wlan1 >/dev/null 2>&1"
+      register: wlan1_exists
+      changed_when: false
+      ignore_errors: true
+      
+    - name: Use wlan0 if wlan1 doesn't exist yet
+      set_fact:
+        wifi_interface: "wlan0"
+      when: wlan1_exists.rc != 0
+      
+    - name: Debug interface variables
+      debug:
+        msg:
+          - "Interface name: {{ interface_name }}"
+          - "Available WiFi interfaces: {{ available_wifi_interfaces.stdout_lines }}"
+          - "Selected WiFi interface: {{ wifi_interface }}"
+          - "AP name: {{ ap_name }}"
+          - "SSID: {{ ssid }}"
+
+    # Verify the selected interface exists
+    - name: Check if selected WiFi interface exists
+      command: nmcli device status | grep "{{ wifi_interface }}"
+      register: interface_check
+      changed_when: false
+      ignore_errors: true
+      
+    - name: Display interface check result
+      debug:
+        var: interface_check
+
+    # Fallback: if interface doesn't exist, try to find wlan1 first, then any WiFi interface
+    - name: Find wlan1 interface specifically
+      shell: "nmcli -t -f DEVICE,TYPE device | grep wifi | grep wlan1 | cut -d: -f1 | head -1"
+      register: wlan1_check
+      changed_when: false
+      ignore_errors: true
+      when: interface_check.rc != 0
+
+    - name: Find any available WiFi interface as fallback
+      shell: "nmcli -t -f DEVICE,TYPE device | grep wifi | head -1 | cut -d: -f1"
+      register: fallback_wifi_interface
+      changed_when: false
+      ignore_errors: true
+      when: interface_check.rc != 0 and wlan1_check.rc != 0
+
+    - name: Update WiFi interface if fallback needed
+      set_fact:
+        wifi_interface: "{{ (wlan1_check.stdout | default('')).strip() or (fallback_wifi_interface.stdout | default('')).strip() or 'wlan1' }}"
+      when: interface_check.rc != 0
+
+    - name: Final interface selection debug
+      debug:
+        msg: "Final selected WiFi interface: {{ wifi_interface }}"
 
     # Check if NetworkManager connection exists
     - name: Check if AP connection profile exists
@@ -45,28 +218,72 @@
         conn_name: "{{ ap_name }}"
       when: nmcli_show_result.rc == 0
 
-    # Create the access point connection
-    - name: Create access point connection
-      command: >
-        nmcli con add type wifi
-        con-name "{{ ap_name }}"
-        autoconnect yes
-        ifname "{{ interface_name }}"
-        ssid "{{ ssid }}"
-        mode ap
+    # Also check for any existing connections with the same SSID and delete them
+    - name: Check for existing connections with same SSID
+      shell: nmcli -t -f connection connection show | grep -i wifi || true
+      register: existing_wifi_connections
+      changed_when: false
+      ignore_errors: true
 
-    # Configure the connection for 2.4GHz band (mode g)
-    - name: Configure WiFi band, mode, channel, IP Settings IP sharing, Passwordless Auth and Disable IPv6 and autoconnect for AP
+    - name: Display existing WiFi connections
+      debug:
+        var: existing_wifi_connections.stdout_lines
+
+    - name: Delete any existing connections with the same SSID
+      command: nmcli connection delete "{{ item }}"
+      loop: "{{ existing_wifi_connections.stdout_lines | map('regex_replace', '^([^:]+):.*', '\\1') | list }}"
+      when: 
+        - existing_wifi_connections.stdout_lines is defined
+        - item is not none
+        - item != ""
+      ignore_errors: true
+
+    # Create the access point connection (delete first to ensure clean state)
+    - name: Delete existing AP connection if exists (clean slate approach)
+      command: nmcli connection delete "{{ ap_name }}"
+      ignore_errors: true
+
+    - name: Create new open access point connection
+      command: >
+        nmcli connection add type wifi
+        ifname "{{ wifi_interface }}"
+        con-name "{{ ap_name }}"
+        mode ap
+        ssid "{{ ssid }}"
+      register: connection_creation
+      failed_when: false
+
+    - name: Display connection creation result
+      debug:
+        var: connection_creation
+
+    # If connection creation failed due to interface issues, try without specifying interface
+    - name: Create access point connection without interface specification
+      command: >
+        nmcli connection add type wifi
+        con-name "{{ ap_name }}"
+        mode ap
+        ssid "{{ ssid }}"
+      register: connection_creation_fallback
+      failed_when: false
+      when: connection_creation.rc != 0
+
+    - name: Display fallback connection creation result
+      debug:
+        var: connection_creation_fallback
+      when: connection_creation.rc != 0
+
+    # Configure the connection for 2.4GHz band and network settings
+    - name: Configure AP connection settings
       command: >
         nmcli connection modify "{{ ap_name }}"
-        802-11-wireless.mode ap
+        connection.interface-name "{{ wifi_interface }}"
         802-11-wireless.band bg
         802-11-wireless.channel 7
-        ipv4.addresses "{{ ip_address }}"
         ipv4.method manual
+        ipv4.addresses "{{ ip_address }}"
         ipv4.gateway "{{ wifi_ip }}"
         ipv4.dns "{{ wifi_ip }}"
-        802-11-wireless-security.key-mgmt none
         ipv6.method disabled
         connection.autoconnect yes
 
@@ -77,12 +294,87 @@
         owner: root
         group: root
 
+    # Check and fix the connection file if needed
+    - name: Check if connection file exists
+      stat:
+        path: "/etc/NetworkManager/system-connections/{{ ap_name }}.nmconnection"
+      register: connection_file_check
+
+    - name: Display connection file check
+      debug:
+        var: connection_file_check
+
+
+    # Verify the connection was created correctly
+    - name: Verify AP connection configuration
+      command: nmcli connection show "{{ ap_name }}"
+      register: ap_connection_verify
+      changed_when: false
+      ignore_errors: true
+
+    - name: Display AP connection configuration
+      debug:
+        var: ap_connection_verify.stdout_lines
+
+    # Check if the WiFi interface is already connected to something
+    - name: Check current WiFi interface status
+      shell: nmcli device status | grep "{{ wifi_interface }}"
+      register: wifi_interface_status
+      changed_when: false
+      ignore_errors: true
+
+    - name: Display WiFi interface status
+      debug:
+        var: wifi_interface_status.stdout_lines
+
+    # Disconnect the interface from any existing connections first
+    - name: Disconnect WiFi interface from existing connections
+      command: nmcli device disconnect "{{ wifi_interface }}"
+      register: disconnect_result
+      changed_when: false
+      ignore_errors: true
+      when: wifi_interface_status.rc == 0
+
+    - name: Display disconnect result
+      debug:
+        var: disconnect_result
+      when: wifi_interface_status.rc == 0
+
     # Activate the access point
     - name: Activate the access point
       command: nmcli connection up "{{ ap_name }}"
       register: ap_activation
-      failed_when: ap_activation.rc != 0 and "Unknown connection" not in ap_activation.stderr
-      ignore_errors: yes
+      failed_when: false
+      ignore_errors: true
+      
+    - name: Display access point activation result
+      debug:
+        var: ap_activation
+      
+    # If activation failed, reload NetworkManager and try again
+    - name: Reload NetworkManager if activation failed
+      systemd:
+        name: NetworkManager
+        state: reloaded
+      when: ap_activation.rc != 0
+      ignore_errors: true
+
+    - name: Wait for NetworkManager to reload
+      pause:
+        seconds: 5
+      when: ap_activation.rc != 0
+
+    - name: Try activating access point again after reload
+      command: nmcli connection up "{{ ap_name }}"
+      register: ap_activation_retry
+      failed_when: false
+      ignore_errors: true
+      when: ap_activation.rc != 0
+
+    - name: Display retry activation result
+      debug:
+        var: ap_activation_retry
+      when: ap_activation.rc != 0
       
     # Check status of the access point
     - name: Check access point status

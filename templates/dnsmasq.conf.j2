@@ -1,0 +1,30 @@
+# dnsmasq Configuration Template
+# Template for Instant Community WiFi Portal
+# Uses Ansible variables for consistent IP configuration
+
+# For debugging purposes, log each DNS query as it passes through dnsmasq.
+log-queries
+log-facility=/tmp/dnsmasq/dnsmasq.log
+
+# Restrict which network interfaces Dnsmasq listens to
+interface={{ wifi_interface }}
+
+# Never forward plain names (without a dot or domain part)
+domain-needed
+
+# Never forward addresses in the non-routed address spaces.
+bogus-priv
+
+# Don't want dnsmasq to read /etc/hosts
+no-hosts
+
+# DHCP configuration using project variables
+# wifi_ip: {{ wifi_ip }} -> Gateway IP
+# wifi_interface: {{ wifi_interface }} -> WiFi interface name
+dhcp-range={{ wifi_ip | regex_replace('(\\d+\\.\\d+\\.\\d+)\\.\\d+', '\\1.34') }},{{ wifi_ip | regex_replace('(\\d+\\.\\d+\\.\\d+)\\.\\d+', '\\1.253') }},12h
+server={{ wifi_ip }}@{{ wifi_interface }}
+local=/localnet/
+address=/#/{{ wifi_ip }} # DNS wildcard that redirects everything to the hotspot
+
+# Uncomment if DHCP lease change script is implemented
+#dhcp-script=/usr/local/bin/dnsmasq_dhcp_lease_changed.sh

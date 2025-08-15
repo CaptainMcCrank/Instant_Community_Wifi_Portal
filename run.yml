@@ -2,6 +2,33 @@
  - hosts: AnsibleHotspotTargets
    become: yes
    become_user: root
+   vars:
+     selfie_app_enabled: true
+     cloudflare_tunnel_enabled: true
    roles: 
      - role: system
+     - role: cloudflare_tunnel
+       when: cloudflare_tunnel_enabled | default(true)
+     - role: selfie_app
+       when: selfie_app_enabled | default(true)
+   
+   post_tasks:
+     - name: Set final hostname (after all roles complete)
+       ansible.builtin.hostname:
+         name: "{{ hostname }}"
+       tags: final_hostname_change
+     
+     - name: Update /etc/hosts with final hostname
+       lineinfile:
+         path: /etc/hosts
+         backrefs: yes
+         regexp: '^(127.0.0.1\tlocalhost)(\s+.*|$)'
+         line: '\1 {{ hostname }}'
+       tags: final_hostname_change
+     
+     - name: Append /etc/hosts file with WiFi IP mapping
+       lineinfile:
+         path: /etc/hosts
+         line: '{{ wifi_ip }} {{ hostname }} {{ hostname }}'
+       tags: final_hostname_change
    
