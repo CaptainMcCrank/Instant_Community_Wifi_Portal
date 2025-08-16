@@ -1,6 +1,6 @@
 server {
 	listen 80;
-	server_name thepub.local www.thepub.local bidding-sought-tongue-essex.trycloudflare.com selfies.griffincreektrestle.net;
+	server_name thepub.local www.thepub.local bidding-sought-tongue-essex.trycloudflare.com;
 	access_log /var/log/nginx/access.log combined;
 	error_log /var/log/nginx/error.log warn;
 	client_max_body_size 28M;

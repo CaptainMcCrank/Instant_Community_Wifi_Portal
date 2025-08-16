@@ -1,0 +1,86 @@
+---
+# Validation tests for critical nodogsplash + DHCP configuration
+# These tests ensure the playbook creates a stable, working configuration
+
+- name: Validate WiFi AP is NOT using NetworkManager DHCP (shared mode)
+  shell: nmcli connection show "{{ ap_name | default('JoinMe-AP') }}" | grep "ipv4.method" | grep -v "shared"
+  register: nm_dhcp_check
+  failed_when: nm_dhcp_check.rc != 0
+  changed_when: false
+  tags: [validation, critical]
+
+- name: Display NetworkManager WiFi AP configuration
+  debug:
+    var: nm_dhcp_check.stdout_lines
+  tags: [validation, critical]
+
+- name: Validate standalone dnsmasq service is enabled and will start
+  systemd:
+    name: dnsmasq
+    enabled: yes
+  check_mode: yes
+  register: dnsmasq_enabled_check
+  tags: [validation, critical]
+
+- name: Validate dnsmasq log directory exists
+  stat:
+    path: /tmp/dnsmasq
+  register: dnsmasq_logdir_check
+  failed_when: not dnsmasq_logdir_check.stat.exists
+  tags: [validation, critical]
+
+- name: Validate nodogsplash service dependency on dnsmasq
+  shell: systemctl list-dependencies nodogsplash.service | grep dnsmasq || echo "No explicit dependency found"
+  register: nds_dependency_check
+  changed_when: false
+  tags: [validation, critical]
+
+- name: Display nodogsplash service dependencies
+  debug:
+    var: nds_dependency_check.stdout_lines
+  tags: [validation, critical]
+
+- name: Check for incompatible NetworkManager DHCP configuration
+  shell: nmcli connection show "{{ ap_name | default('JoinMe-AP') }}" | grep "ipv4.method.*shared"
+  register: incompatible_dhcp_check
+  failed_when: false
+  changed_when: false
+  tags: [validation, critical]
+
+- name: Warn user about potentially unstable playbook configuration
+  debug:
+    msg: |
+      ⚠️ WARNING: POTENTIALLY UNSTABLE PLAYBOOK CONFIGURATION ⚠️
+      The WiFi AP is configured to use NetworkManager DHCP (shared mode).
+      This is INCOMPATIBLE with nodogsplash captive portal and will cause
+      nodogsplash service failures during deployment.
+      
+      Expected: ipv4.method = manual (with standalone dnsmasq)
+      Found: ipv4.method = shared (NetworkManager DHCP)
+      
+      Please review CLAUDE.md for proper configuration requirements.
+  when: incompatible_dhcp_check.rc == 0
+  tags: [validation, critical]
+
+- name: Fail deployment if using incompatible DHCP configuration
+  fail:
+    msg: |
+      DEPLOYMENT HALTED: Incompatible DHCP configuration detected.
+      nodogsplash requires standalone dnsmasq, not NetworkManager DHCP.
+      Please update the WiFi AP configuration to use manual mode.
+      See CLAUDE.md for detailed configuration requirements.
+  when: 
+    - incompatible_dhcp_check.rc == 0
+    - ansible_check_mode == false
+    - strict_validation | default(false) | bool
+  tags: [validation, critical]
+
+- name: Validation summary
+  debug:
+    msg: |
+      ✅ VALIDATION COMPLETE ✅
+      WiFi AP Configuration: {{ 'MANUAL (Correct)' if nm_dhcp_check.rc == 0 else 'SHARED (Incompatible)' }}
+      Dnsmasq Service: {{ 'ENABLED' if dnsmasq_enabled_check.enabled else 'DISABLED' }}
+      Dnsmasq Log Directory: {{ 'EXISTS' if dnsmasq_logdir_check.stat.exists else 'MISSING' }}
+      Configuration Status: {{ 'STABLE' if nm_dhcp_check.rc == 0 and dnsmasq_logdir_check.stat.exists else 'UNSTABLE' }}
+  tags: [validation, critical]

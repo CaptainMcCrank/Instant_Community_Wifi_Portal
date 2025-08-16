@@ -5,6 +5,11 @@
        state: restarted
        enabled: yes
 
+   - name: reload nginx
+     systemd:
+       name: nginx
+       state: reloaded
+
    - name: restart dnsmasq
      systemd:
        name: dnsmasq
@@ -15,3 +20,9 @@
      systemd:
        name: NetworkManager
        state: reloaded
+
+   - name: restart avahi-daemon
+     systemd:
+       name: avahi-daemon
+       state: restarted
+       enabled: yes

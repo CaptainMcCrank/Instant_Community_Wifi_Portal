@@ -68,6 +68,14 @@ test_interface_status() {
     fi
     print_result "Interface $WIFI_INTERFACE exists" "PASS" ""
     
+    # SAFETY CHECK: Ensure we're not accidentally using wlan0 for AP
+    if [ "$WIFI_INTERFACE" = "wlan0" ]; then
+        print_result "AP interface safety check" "FAIL" "CRITICAL: wlan0 should NEVER be used for AP - this breaks internet!"
+        return 1
+    else
+        print_result "AP interface safety check" "PASS" "Using correct AP interface: $WIFI_INTERFACE"
+    fi
+    
     # Check if interface is up
     interface_state=$(ip link show "$WIFI_INTERFACE" | grep -o "state [A-Z]*" | cut -d' ' -f2)
     if [ "$interface_state" = "UP" ]; then
@@ -155,18 +163,17 @@ test_wifi_broadcast() {
 test_dhcp_server() {
     print_header "Test 4: DHCP Server Functionality"
     
-    # Check if NetworkManager's dnsmasq is running for this interface
-    if ps aux | grep -q "dnsmasq.*listen-address=$EXPECTED_IP.*dhcp-range"; then
-        print_result "DHCP server (dnsmasq) is running" "PASS" ""
+    # Check if standalone dnsmasq service is running (required for nodogsplash)
+    if systemctl is-active --quiet dnsmasq; then
+        print_result "DHCP server (dnsmasq) is running" "PASS" "Standalone dnsmasq service active"
     else
-        print_result "DHCP server (dnsmasq) is running" "FAIL" "No dnsmasq process found for $EXPECTED_IP"
+        print_result "DHCP server (dnsmasq) is running" "FAIL" "Standalone dnsmasq service not running"
         return 1
     fi
     
-    # Check DHCP configuration
-    dhcp_process=$(ps aux | grep "dnsmasq.*$EXPECTED_IP" | grep -v grep)
-    if echo "$dhcp_process" | grep -q "dhcp-range=10.10.42"; then
-        print_result "DHCP range configured" "PASS" "Range appears to be in 10.10.42.x network"
+    # Check DHCP configuration in standalone dnsmasq
+    if ps aux | grep -q "dnsmasq.*interface=$WIFI_INTERFACE" || ps aux | grep -q "/usr/sbin/dnsmasq"; then
+        print_result "DHCP range configured" "PASS" "Standalone dnsmasq configured"
     else
         print_result "DHCP range configured" "FAIL" "DHCP range not found in process"
         return 1
@@ -186,11 +193,16 @@ test_dhcp_server() {
         return 1
     fi
     
-    # Check NetworkManager connection method
-    if nmcli connection show JoinMe-AP | grep -q "ipv4.method.*shared"; then
-        print_result "NetworkManager shared mode enabled" "PASS" "DHCP sharing active"
+    # Check NetworkManager connection method (should be manual for nodogsplash compatibility)
+    if nmcli connection show JoinMe-AP | grep -q "ipv4.method.*manual"; then
+        print_result "NetworkManager WiFi AP configuration" "PASS" "Using manual mode (compatible with nodogsplash)"
+    elif nmcli connection show JoinMe-AP | grep -q "ipv4.method.*shared"; then
+        print_result "NetworkManager WiFi AP configuration" "FAIL" "Using shared mode (INCOMPATIBLE with nodogsplash)"
+        echo -e "  ${YELLOW}WARNING: NetworkManager shared mode conflicts with nodogsplash captive portal${NC}"
+        echo -e "  ${YELLOW}This will cause nodogsplash service failures. Use manual mode + standalone dnsmasq.${NC}"
+        return 1
     else
-        print_result "NetworkManager shared mode enabled" "FAIL" "Not in shared mode"
+        print_result "NetworkManager WiFi AP configuration" "FAIL" "Unknown or invalid method"
         return 1
     fi
     

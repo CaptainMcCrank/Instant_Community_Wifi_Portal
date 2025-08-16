@@ -5,15 +5,56 @@
         name: nginx
         state: present
 
-    - name: Update server_name in Nginx configuration
-      replace:
-        path: /etc/nginx/sites-available/default
-        regexp: 'ansibledest\.local'
-        replace: "{{ hostname }}"
-
     - name: Copy nginx configuration files over to target
       synchronize:
         src: "{{ root_playbook_dir }}/etc/nginx/"
         dest: /etc/nginx
         recursive: yes
+
+    - name: Update nginx thepub.local config to use hostname variable
+      replace:
+        path: /etc/nginx/sites-available/thepub.local
+        regexp: '/var/www/thepub\.local'
+        replace: '/var/www/{{ hostname }}'
+      tags: hostname_fix
+
+    - name: Update nginx server_name to use hostname variable  
+      replace:
+        path: /etc/nginx/sites-available/thepub.local
+        regexp: 'server_name thepub\.local www\.thepub\.local'
+        replace: 'server_name {{ hostname }} www.{{ hostname }}'
+      tags: hostname_fix
+
+    - name: Remove default nginx site to prevent conflicts
+      file:
+        path: /etc/nginx/sites-enabled/default
+        state: absent
+      notify: reload nginx
+
+    - name: Enable thepub.local nginx site
+      file:
+        src: /etc/nginx/sites-available/thepub.local
+        dest: /etc/nginx/sites-enabled/thepub.local
+        state: link
+      notify: reload nginx
+
+    - name: Enable selfies.griffincreektrestle.net nginx site (if external access needed)
+      file:
+        src: /etc/nginx/sites-available/selfies.griffincreektrestle.net
+        dest: /etc/nginx/sites-enabled/selfies.griffincreektrestle.net
+        state: link
+      when: enable_external_selfie_access | default(false) | bool
+      notify: reload nginx
+
+    - name: Test nginx configuration
+      command: nginx -t
+      register: nginx_test
+      changed_when: false
+      failed_when: nginx_test.rc != 0
+
+    - name: Start and enable nginx service
+      systemd:
+        name: nginx
+        state: started
+        enabled: yes
      

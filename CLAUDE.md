@@ -137,6 +137,37 @@ This should be explicitly documented and handled in playbooks through:
 
 These guidelines should prevent the majority of issues encountered during this session and provide clear debugging paths when problems arise.
 
+## CRITICAL NODOGSPLASH + DHCP REQUIREMENTS
+
+### ⚠️ MANDATORY: Standalone dnsmasq for Nodogsplash
+- **nodogsplash REQUIRES a standalone dnsmasq service** to function
+- **NetworkManager's built-in DHCP (shared mode) is INCOMPATIBLE** with nodogsplash
+- **WiFi AP must be configured in `manual` mode**, not `shared` mode
+- **dnsmasq service must be enabled and running** before nodogsplash starts
+
+### Critical Service Startup Order
+1. **NetworkManager** (manages interfaces, NO DHCP)
+2. **dnsmasq** (standalone DHCP server)  
+3. **nodogsplash** (depends on dnsmasq service)
+
+### Required Configuration Files
+- `/etc/dnsmasq.conf` - DHCP configuration for wlan1
+- `/tmp/dnsmasq/` directory - Must exist with proper permissions
+- `/etc/systemd/system/nodogsplash.service` - Must depend on dnsmasq.service
+
+### Detection Commands
+```bash
+# Check if using incompatible NetworkManager DHCP
+nmcli connection show JoinMe-AP | grep "ipv4.method.*shared"
+
+# Verify standalone dnsmasq is running
+systemctl status dnsmasq.service
+ps aux | grep dnsmasq
+
+# Test nodogsplash dependency
+systemctl status nodogsplash.service
+```
+
 ## CRITICAL SAFETY GUARDRAILS
 
 ### Network Configuration Changes
@@ -186,14 +217,15 @@ These guidelines should prevent the majority of issues encountered during this s
 
 ### Interface Roles (CRITICAL)
 - **wlan0**: Internet gateway interface (DHCP client via NetworkManager)
-- **wlan1**: WiFi access point interface (static IP 10.10.42.1, serves DHCP via NetworkManager shared mode)
+- **wlan1**: WiFi access point interface (static IP 10.10.42.1, NO NetworkManager DHCP)
 - **eth0**: Backup wired connection (DHCP via dhcpcd)
 
 ### Service Dependencies
-- **NetworkManager**: Manages wlan0 (internet) and wlan1 (AP with built-in DHCP)
+- **NetworkManager**: Manages wlan0 (internet) and wlan1 (AP interface - NO DHCP)
+- **dnsmasq**: Standalone DHCP server for wlan1 (REQUIRED for nodogsplash)
 - **dhcpcd**: Manages eth0, excludes wlan0 (`denyinterfaces wlan0`)
 - **nginx**: Proxies selfie portal from port 5001 to port 80
-- **nodogsplash**: Captive portal (may have dependency issues)
+- **nodogsplash**: Captive portal (REQUIRES standalone dnsmasq service)
 - **cloudflared**: External tunnel access (optional)
 
 ### IP Architecture
@@ -228,9 +260,16 @@ The validation script `/usr/local/bin/validate-ap.sh` tests:
 4. Check for conflicting sites
 
 ### DHCP Not Working
-1. Verify NetworkManager shared mode enabled
-2. Check for dnsmasq process on correct interface
-3. Ensure no dhcpcd conflicts
+1. **CRITICAL**: Verify standalone dnsmasq service is running (NOT NetworkManager DHCP)
+2. Check `/tmp/dnsmasq/` directory exists with proper permissions
+3. Ensure no dhcpcd conflicts on wlan1
+4. Verify NetworkManager connection is in `manual` mode (NOT `shared`)
+
+### Nodogsplash Service Failing
+1. **Check dnsmasq dependency**: `systemctl status dnsmasq.service`
+2. **Verify log directory**: `ls -la /tmp/dnsmasq/`
+3. **Check service dependency chain**: `systemctl list-dependencies nodogsplash.service`
+4. **Review nodogsplash logs**: `journalctl -u nodogsplash.service -f`
 
 ### Hostname Transition Issues
 1. Remember hostname changes in post_tasks (after roles)

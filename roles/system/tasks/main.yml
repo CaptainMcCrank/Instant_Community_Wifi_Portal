@@ -1,18 +1,18 @@
 ---
 - import_tasks: essential.yml
 - import_tasks: AWUS036ACH_wifi_adapter.yml
-- import_tasks: networkmanager_dnsmasq.yml
+- import_tasks: Arm64_on32.yml
+- import_tasks: networkmanager_cleanup.yml
 - import_tasks: nmclisetup.yml
-- import_tasks: hostapd.yml
+- import_tasks: hostapd.yml #TODO: rename this to hostapd_kill.yml
 - import_tasks: dnsmasq.yml
 - import_tasks: nginx.yml
 - import_tasks: captivePortal.yml
 - import_tasks: webservercontent.yml
 # - import_tasks: streamer.yml 
 - import_tasks: InstantCommunityWifiPortal.yml
-# - import_tasks: selfie_portal.yml
-- import_tasks: cloudflare_tunnel.yml
 - import_tasks: firewall.yml
 - import_tasks: chromium.yml
 - import_tasks: sslcert.yml
+- import_tasks: validation_tests.yml
 - import_tasks: final_cleanup.yml
