@@ -24,7 +24,12 @@ no-hosts
 dhcp-range={{ wifi_ip | regex_replace('(\\d+\\.\\d+\\.\\d+)\\.\\d+', '\\1.34') }},{{ wifi_ip | regex_replace('(\\d+\\.\\d+\\.\\d+)\\.\\d+', '\\1.253') }},12h
 server={{ wifi_ip }}@{{ wifi_interface }}
 local=/localnet/
-address=/#/{{ wifi_ip }} # DNS wildcard that redirects everything to the hotspot
+
+# Redirect Cloudflare domain to local selfie portal (for certificate-based HTTPS access)
+address=/selfies.griffincreektrestle.net/{{ wifi_ip }}
+
+# DNS wildcard that redirects everything else to the hotspot
+address=/#/{{ wifi_ip }}
 
 # Uncomment if DHCP lease change script is implemented
 #dhcp-script=/usr/local/bin/dnsmasq_dhcp_lease_changed.sh

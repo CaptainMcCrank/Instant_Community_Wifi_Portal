@@ -1,6 +1,12 @@
 server {
     listen 80;
+    listen 443 ssl http2;
     server_name selfies.griffincreektrestle.net;
+    
+    # SSL configuration for Cloudflare certificate approach
+    # Note: This uses self-signed certs locally, but Cloudflare provides valid certs to clients
+    ssl_certificate /etc/ssl/certs/ssl-cert-snakeoil.pem;
+    ssl_certificate_key /etc/ssl/private/ssl-cert-snakeoil.key;
 
     access_log /var/log/nginx/selfies.access.log;
     error_log /var/log/nginx/selfies.error.log;

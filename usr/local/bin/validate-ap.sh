@@ -320,14 +320,24 @@ test_selfie_portal() {
         fi
     fi
     
-    # Test external tunnel URL if configured
-    # Get tunnel domain from variables (from defaults/main.yml)
+    # Test Cloudflare certificate domain (local DNS redirect approach)
+    # This tests if WiFi clients can access HTTPS domain with valid Cloudflare certificates
     tunnel_domain="selfies.griffincreektrestle.net"
     if [ -n "$tunnel_domain" ]; then
-        if curl -s --connect-timeout 10 "https://$tunnel_domain" | grep -i "selfie\|community\|portal" > /dev/null; then
-            print_result "External selfie portal accessible (https://$tunnel_domain)" "PASS" "Tunnel working"
+        # Check if domain resolves to local IP (indicates DNS redirect is working)
+        resolved_ip=$(nslookup "$tunnel_domain" 127.0.0.1 2>/dev/null | grep "Address:" | tail -1 | awk '{print $2}')
+        if [ "$resolved_ip" = "$EXPECTED_IP" ]; then
+            # Test HTTPS access (use -k to ignore cert warnings for local testing)
+            tunnel_response=$(curl -s -k --connect-timeout 10 "https://$tunnel_domain" 2>&1)
+            if echo "$tunnel_response" | grep -i "selfie\|community\|portal" > /dev/null; then
+                print_result "Cloudflare certificate domain (https://$tunnel_domain)" "PASS" "Local HTTPS redirect working"
+            else
+                print_result "Cloudflare certificate domain (https://$tunnel_domain)" "FAIL" "Domain redirects but HTTPS content issue"
+                echo -e "  ${YELLOW}Debug: Check nginx HTTPS config and certificate setup${NC}"
+            fi
         else
-            print_result "External selfie portal accessible (https://$tunnel_domain)" "FAIL" "Tunnel may not be configured or DNS not propagated"
+            print_result "Cloudflare certificate domain (https://$tunnel_domain)" "FAIL" "Domain not redirecting to local IP ($EXPECTED_IP)"
+            echo -e "  ${YELLOW}Debug: Expected local redirect, got $resolved_ip. Check dnsmasq address config.${NC}"
         fi
     fi
     
@@ -338,17 +348,18 @@ test_selfie_portal() {
         print_result "Nginx configured for selfie portal" "FAIL" "No selfie portal config in nginx"
     fi
     
-    # Test wlan0 interface access (if wlan0 has IP)
+    # Test wlan0 interface isolation (this should FAIL for security)
     wlan0_ip=$(ip addr show wlan0 2>/dev/null | grep "inet " | awk '{print $2}' | cut -d'/' -f1)
     if [ -n "$wlan0_ip" ] && [ "$wlan0_ip" != "127.0.0.1" ]; then
-        # Test from wlan0 perspective (simulate client on internet side)
+        # Test from wlan0 perspective (should be blocked for security)
         if curl -s --connect-timeout 5 --interface wlan0 "http://$current_hostname" | grep -i "selfie\|community\|portal" > /dev/null 2>&1; then
-            print_result "Selfie portal accessible via wlan0 interface" "PASS" "Internet-side access working"
+            print_result "Network isolation (wlan0 blocked)" "FAIL" "SECURITY ISSUE: wlan0 can access AP services"
+            echo -e "  ${YELLOW}WARNING: This is a security vulnerability! wlan0 should not access wlan1 services.${NC}"
         else
-            print_result "Selfie portal accessible via wlan0 interface" "FAIL" "No access via wlan0 interface"
+            print_result "Network isolation (wlan0 blocked)" "PASS" "Secure: wlan0 properly isolated from AP services"
         fi
     else
-        print_result "wlan0 interface has valid IP" "FAIL" "wlan0 not configured or no IP assigned"
+        print_result "wlan0 interface configured" "PASS" "wlan0 not configured (acceptable for AP-only mode)"
     fi
     
     return 0

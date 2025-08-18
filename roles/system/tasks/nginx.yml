@@ -44,12 +44,11 @@
         state: link
       notify: reload nginx
 
-    - name: Enable selfies.griffincreektrestle.net nginx site (if external access needed)
+    - name: Enable selfies.griffincreektrestle.net nginx site (for Cloudflare certificate HTTPS access)
       file:
         src: /etc/nginx/sites-available/selfies.griffincreektrestle.net
         dest: /etc/nginx/sites-enabled/selfies.griffincreektrestle.net
         state: link
-      when: enable_external_selfie_access | default(false) | bool
       notify: reload nginx
 
     - name: Check for nginx configuration conflicts
