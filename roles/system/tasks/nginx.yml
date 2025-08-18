@@ -31,6 +31,12 @@
         state: absent
       notify: reload nginx
 
+    - name: Remove conflicting selfie-portal nginx site (causes 502 errors)
+      file:
+        path: /etc/nginx/sites-enabled/selfie-portal
+        state: absent
+      notify: reload nginx
+
     - name: Enable thepub.local nginx site
       file:
         src: /etc/nginx/sites-available/thepub.local
@@ -45,6 +51,20 @@
         state: link
       when: enable_external_selfie_access | default(false) | bool
       notify: reload nginx
+
+    - name: Check for nginx configuration conflicts
+      shell: nginx -t 2>&1 | grep -i "conflicting server name" || echo "No conflicts found"
+      register: nginx_conflicts_check
+      changed_when: false
+      
+    - name: Display nginx conflict check results
+      debug:
+        var: nginx_conflicts_check.stdout_lines
+        
+    - name: Fail if nginx has conflicting server names
+      fail:
+        msg: "NGINX CONFIGURATION CONFLICT DETECTED! Multiple sites trying to serve the same hostname. Check sites-enabled directory."
+      when: "'conflicting server name' in nginx_conflicts_check.stdout"
 
     - name: Test nginx configuration
       command: nginx -t
