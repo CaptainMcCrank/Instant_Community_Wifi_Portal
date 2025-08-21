@@ -9,6 +9,7 @@
 - import_tasks: nginx.yml
 - import_tasks: captivePortal.yml
 - import_tasks: webservercontent.yml
+- import_tasks: nodogsplash_selfie_integration.yml
 # - import_tasks: streamer.yml 
 - import_tasks: InstantCommunityWifiPortal.yml
 - import_tasks: firewall.yml

@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    
+    <link rel="shortcut icon" href="/images/splash.jpg" type="image/x-icon">
+    <link rel="stylesheet" type="text/css" href="/splash.css">
+    
+    <!-- Enhanced styling for selfie portal integration -->
+    <style>
+        .selfie-integration {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .portal-preview {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 15px;
+            padding: 20px;
+            margin: 20px 0;
+            color: white;
+            text-align: center;
+        }
+        
+        .camera-preview {
+            width: 100%;
+            max-width: 300px;
+            height: 200px;
+            background: #f0f0f0;
+            border-radius: 10px;
+            margin: 15px auto;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 3px dashed #ccc;
+        }
+        
+        .action-buttons {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin: 20px 0;
+        }
+        
+        .btn {
+            padding: 12px 25px;
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            font-weight: bold;
+            text-decoration: none;
+            display: inline-block;
+            transition: all 0.3s ease;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(45deg, #FF6B6B, #4ECDC4);
+            color: white;
+        }
+        
+        .btn-secondary {
+            background: #f8f9fa;
+            color: #333;
+            border: 2px solid #ddd;
+        }
+        
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+        
+        .gnome-section {
+            background: rgba(255,255,255,0.9);
+            border-radius: 15px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        
+        .continue-section {
+            background: #28a745;
+            color: white;
+            border-radius: 10px;
+            padding: 20px;
+            margin: 20px 0;
+            text-align: center;
+        }
+        
+        .continue-section input[type="submit"] {
+            background: white;
+            color: #28a745;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 25px;
+            font-size: 18px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .continue-section input[type="submit"]:hover {
+            background: #f8f9fa;
+            transform: scale(1.05);
+        }
+    </style>
+    
+    <title>$gatewayname Community WiFi Portal</title>
+</head>
+
+<body>
+    <div class="selfie-integration">
+        <!-- Main Header -->
+        <div class="text-center">
+            <h1 style="color: #333; margin-bottom: 10px;">🎉 Welcome to $gatewayname Community WiFi!</h1>
+            <p style="color: #666; font-size: 18px;">Share your moments • Connect with neighbors • Build community</p>
+        </div>
+
+        <!-- Selfie Portal Preview Section -->
+        <div class="portal-preview">
+            <h2>📸 Community Selfie Portal</h2>
+            <p>Once connected, you'll have access to our local community photo sharing platform!</p>
+            
+            <div class="camera-preview">
+                <div style="text-align: center; color: #999;">
+                    <i style="font-size: 48px;">📷</i><br>
+                    <strong>Camera Ready!</strong><br>
+                    Take & Share Selfies
+                </div>
+            </div>
+            
+            <div class="action-buttons">
+                <div class="btn btn-secondary">📷 Take Selfie</div>
+                <div class="btn btn-secondary">🖼️ View Gallery</div>
+                <div class="btn btn-secondary">⬆️ Upload Photo</div>
+            </div>
+            
+            <p><strong>✨ Features Available After Connection:</strong></p>
+            <ul style="text-align: left; display: inline-block;">
+                <li>Take selfies with your device camera</li>
+                <li>Upload photos with captions</li>
+                <li>Browse community photo gallery</li>
+                <li>Share moments with neighbors</li>
+                <li>Access local file library</li>
+            </ul>
+        </div>
+
+        <!-- Gnome Story Section (Preserved) -->
+        <div class="gnome-section">
+            <div class="text-center">
+                <img src="/images/mailbox.jpg" style="max-width: 200px; border-radius: 10px; margin: 10px;">
+                
+                <h3 style="color: #2c5530;">🧙‍♂️ Greetings from Chief Gnarlbark!</h3>
+                <p style="color: #555; line-height: 1.6;">
+                    From the heart of the enchanted Snoqualmie forest! I'm Chief Gnarlbark, chief tinkerer of the 
+                    Gnomish Woodlands Alliance. My industrious heist squad and I may have... "borrowed" a gizmo 
+                    from your world and we've given it a wee bit of a gnome touch.
+                </p>
+                <p style="color: #555; line-height: 1.6;">
+                    Now, it's here to help you weave your stories and share your moments with your fellow 
+                    wanderers in our green realm. We invite you to create a tapestry of memories in our realm, 
+                    to let your creativity ripple through the valley.
+                </p>
+                <p style="color: #555; line-height: 1.6;">
+                    <strong>📱 Pro Tip:</strong> The selfie portal works best with HTTPS for camera access. 
+                    Once connected, visit <strong>https://selfies.griffincreektrestle.net</strong> for the 
+                    full magical experience!
+                </p>
+            </div>
+        </div>
+
+        <!-- Connection Instructions -->
+        <div class="continue-section">
+            <h3>🚀 Ready to Join the Community?</h3>
+            <p>Click below to connect to our local network and access the selfie portal!</p>
+            
+            <form method="get" action="$authaction">
+                <input type="hidden" name="tok" value="$tok">
+                <input type="hidden" name="redir" value="$redir">
+                <input type="submit" value="🌟 Connect & Start Sharing! 🌟">
+            </form>
+            
+            <p style="margin-top: 15px; font-size: 14px; opacity: 0.9;">
+                After connecting, you'll be redirected to the community portal automatically.
+            </p>
+        </div>
+
+        <!-- Technical Info (Collapsible) -->
+        <details style="margin: 20px 0; padding: 15px; background: #f8f9fa; border-radius: 10px;">
+            <summary style="cursor: pointer; font-weight: bold; color: #333;">🔧 Technical Details</summary>
+            <div style="margin-top: 10px; color: #666; font-size: 14px;">
+                <p><strong>Network:</strong> $gatewayname (JoinMe)</p>
+                <p><strong>Portal Access:</strong> https://selfies.griffincreektrestle.net</p>
+                <p><strong>Local Access:</strong> http://$gatewayaddr or https://$gatewayaddr</p>
+                <p><strong>Features:</strong> Camera API, File Upload, Gallery, Community Library</p>
+                <p><strong>Privacy:</strong> Local network only - no internet tracking</p>
+            </div>
+        </details>
+
+        <!-- Footer -->
+        <div style="text-align: center; margin-top: 30px; color: #999; font-size: 12px;">
+            <p>🏠 Local Community Network • 🔒 Privacy Focused • 🌟 Neighbor Friendly</p>
+            <p>Copyright &copy; The Nodogsplash Contributors 2004-2019 • GNU GPL License</p>
+        </div>
+    </div>
+
+    <script>
+        // Add some interactive elements
+        document.addEventListener('DOMContentLoaded', function() {
+            // Animate the camera preview
+            const cameraPreview = document.querySelector('.camera-preview');
+            if (cameraPreview) {
+                setInterval(function() {
+                    cameraPreview.style.borderColor = cameraPreview.style.borderColor === 'rgb(76, 175, 80)' ? '#ccc' : '#4CAF50';
+                }, 2000);
+            }
+            
+            // Add click handlers to preview buttons
+            const previewButtons = document.querySelectorAll('.btn-secondary');
+            previewButtons.forEach(button => {
+                button.addEventListener('click', function() {
+                    alert('Connect to the network first to access this feature! 📸');
+                });
+            });
+        });
+    </script>
+</body>
+</html>

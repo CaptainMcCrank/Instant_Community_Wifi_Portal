@@ -7,9 +7,9 @@
     owner: root
     group: root
 
-- name: Copy wlan1 dnsmasq configuration
-  copy:
-    src: '{{ root_playbook_dir }}/etc/NetworkManager/dnsmasq-shared.d/wlan1.conf'
+- name: Generate wlan1 dnsmasq configuration using template
+  template:
+    src: '{{ root_playbook_dir }}/templates/wlan1.conf.j2'
     dest: /etc/NetworkManager/dnsmasq-shared.d/wlan1.conf
     mode: '0644'
     owner: root

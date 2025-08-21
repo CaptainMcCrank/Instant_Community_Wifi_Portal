@@ -25,17 +25,37 @@
         name: certbot
         classic: true
 
-    - name: Generate private key
+    - name: Ensure snakeoil SSL certificates are available
+      package:
+        name: ssl-cert
+        state: present
+
+    - name: Generate snakeoil certificates if missing
+      command: make-ssl-cert generate-default-snakeoil --force-overwrite
+      args:
+        creates: /etc/ssl/certs/ssl-cert-snakeoil.pem
+
+    - name: Generate private key (custom certificate)
       openssl_privatekey:
         path: /etc/ssl/private/nginx-selfsigned.key
         size: 2048
 
-    - name: Generate self-signed certificate
+    - name: Generate self-signed certificate (custom certificate)  
       openssl_certificate:
         path: /etc/ssl/certs/nginx-selfsigned.crt
         privatekey_path: /etc/ssl/private/nginx-selfsigned.key
         provider: selfsigned
         selfsigned_not_after: "+365d"  # Valid for 365 days
+
+    - name: Ensure nginx user can access SSL certificates
+      file:
+        path: "{{ item }}"
+        group: ssl-cert
+        mode: '0640'
+      loop:
+        - /etc/ssl/private/ssl-cert-snakeoil.key
+        - /etc/ssl/private/nginx-selfsigned.key
+      ignore_errors: true
 
     - name: Create directory for Nginx SSL files
       file:

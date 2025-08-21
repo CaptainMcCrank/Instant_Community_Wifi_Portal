@@ -1,0 +1,6 @@
+[AnsibleHotspotTargets]
+ansibledest-4.local
+
+[all:vars]
+ansible_user=pi
+ansible_ssh_common_args='-o StrictHostKeyChecking=no' 

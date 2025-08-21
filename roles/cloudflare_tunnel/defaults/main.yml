@@ -1,13 +1,13 @@
 ---
 # Cloudflare Tunnel Configuration
 cloudflare_tunnel:
-  name: "{{ tunnel_name }}"
-  domain: "{{ tunnel_domain }}"
+  name: "{{ tunnel_name | default('selfie-portal-working') }}"
+  domain: "{{ tunnel_domain | default('selfies.griffincreektrestle.net') }}"
   local_port: 80
-  credentials_file: "/home/pi/.cloudflared/86c5b63c-cd74-4191-8d5a-0c6119908551.json"
+  credentials_file: "/home/pi/.cloudflared/{{ tunnel_name | default('selfie-portal-working') }}.json"
   binary_url: "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-arm"
   binary_path: "/usr/local/bin/cloudflared"
   config_dir: "/etc/cloudflared"
-  service_name: "cloudflared@{{ tunnel_name }}"
+  service_name: "cloudflared@{{ tunnel_name | default('selfie-portal-working') }}"
   user: "pi"
   group: "pi" 

@@ -1,0 +1,205 @@
+---
+# ARM64 Foreign Architecture Cleanup Tasks
+#
+# PURPOSE:
+# This task file resolves apt-get update failures on 32-bit ARM systems (like Raspberry Pi)
+# caused by ARM64 foreign architecture configuration.
+#
+# PROBLEM DESCRIPTION:
+# Some 32-bit ARM systems have ARM64 foreign architecture enabled, causing apt to search
+# for ARM64 packages during updates. However, standard Raspbian repositories don't provide
+# ARM64 packages, leading to:
+# - "Skipping acquire of configured file 'main/binary-arm64/Packages'" errors
+# - Failed apt-get update operations
+# - Wasted bandwidth and time searching for non-existent packages
+#
+# ROOT CAUSE:
+# ARM64 foreign architecture gets added to 32-bit systems through:
+# - Cross-compilation package installations
+# - Development tools that add multi-arch support
+# - Kernel packages mistakenly installed for wrong architecture
+# - Manual configuration or following incorrect tutorials
+#
+# SOLUTION:
+# This task file safely removes ARM64 packages and foreign architecture support
+# from 32-bit systems, restoring proper apt functionality while maintaining
+# system stability.
+
+- name: Set ARM64 cleanup variables
+  set_fact:
+    target_foreign_arch: "arm64"
+    expected_primary_arch: "armhf"
+    # Define 32-bit architectures that should not have arm64 foreign arch
+    bit32_uname_archs: ['armv6l', 'armv7l', 'i386', 'i686']
+    bit32_dpkg_archs: ['armhf', 'armel', 'i386']
+
+- name: Get system architecture information
+  command: uname -m
+  register: system_arch
+  changed_when: false
+
+- name: Get dpkg primary architecture
+  command: dpkg --print-architecture
+  register: dpkg_primary_arch
+  changed_when: false
+
+- name: Get dpkg foreign architectures
+  command: dpkg --print-foreign-architectures
+  register: dpkg_foreign_archs
+  changed_when: false
+  failed_when: false
+
+- name: Display system information
+  debug:
+    msg:
+      - "System architecture: {{ system_arch.stdout }}"
+      - "Primary dpkg architecture: {{ dpkg_primary_arch.stdout }}"
+      - "Foreign architectures: {{ dpkg_foreign_archs.stdout_lines | default(['none']) }}"
+
+- name: Determine if system is 32-bit
+  set_fact:
+    is_32bit_system: "{{ system_arch.stdout in bit32_uname_archs or 
+                         dpkg_primary_arch.stdout in bit32_dpkg_archs }}"
+
+- name: Display architecture analysis
+  debug:
+    msg:
+      - "Is 32-bit system: {{ is_32bit_system }}"
+      - "Has ARM64 foreign arch: {{ target_foreign_arch in dpkg_foreign_archs.stdout_lines | default([]) }}"
+      - "Primary arch is expected: {{ dpkg_primary_arch.stdout == expected_primary_arch }}"
+
+- name: Check if cleanup is needed
+  set_fact:
+    needs_arm64_cleanup: "{{ is_32bit_system and
+                             target_foreign_arch in dpkg_foreign_archs.stdout_lines | default([]) }}"
+
+- name: Safety check - abort if not 32-bit system
+  fail:
+    msg: 
+      - "This task file should only run on 32-bit systems."
+      - "Detected: {{ system_arch.stdout }} (uname) / {{ dpkg_primary_arch.stdout }} (dpkg)"
+      - "Aborting for safety."
+  when: not is_32bit_system
+
+- name: Display cleanup decision
+  debug:
+    msg: 
+      - "32-bit system confirmed: {{ is_32bit_system }}"
+      - "ARM64 cleanup needed: {{ needs_arm64_cleanup }}"
+
+- name: Clean up ARM64 foreign architecture
+  block:
+    # CLEANUP PROCESS:
+    # 1. Identify ARM64 packages that are preventing architecture removal
+    # 2. Create backup of current package state for rollback if needed
+    # 3. Remove ARM64 packages (often kernel packages installed incorrectly)
+    # 4. Remove ARM64 from foreign architectures list
+    # 5. Update package cache to reflect the corrected configuration
+    
+    - name: Find ARM64 packages installed
+      shell: "dpkg -l | grep arm64 | awk '{print $2}'"
+      register: arm64_packages
+      changed_when: false
+
+    - name: Display ARM64 packages found
+      debug:
+        msg: "ARM64 packages found: {{ arm64_packages.stdout_lines }}"
+      when: arm64_packages.stdout_lines | length > 0
+
+    - name: Get ARM64 package selections
+      shell: "dpkg --get-selections | grep arm64 | cut -f1"
+      register: arm64_selections
+      changed_when: false
+
+    - name: Backup current package selections
+      shell: "dpkg --get-selections > /tmp/dpkg-selections-backup-$(date +%Y%m%d-%H%M%S).txt"
+      register: backup_result
+
+    - name: Display backup location
+      debug:
+        msg: "Package selections backed up to: {{ backup_result.stdout }}"
+
+    - name: Remove ARM64 packages (with confirmation)
+      # These are typically kernel packages like linux-image-*:arm64 that were
+      # incorrectly installed on 32-bit systems, causing the foreign arch dependency
+      apt:
+        name: "{{ item }}"
+        state: absent
+        purge: yes
+      loop: "{{ arm64_selections.stdout_lines }}"
+      when: 
+        - arm64_selections.stdout_lines | length > 0
+        - confirm_removal | default(false) | bool
+      register: package_removal
+
+    - name: Alternative removal method using apt-get (if apt module fails)
+      shell: "apt-get remove --purge -y {{ arm64_selections.stdout_lines | join(' ') }}"
+      when: 
+        - arm64_selections.stdout_lines | length > 0
+        - confirm_removal | default(false) | bool
+        - package_removal is failed
+      register: alt_removal
+
+    - name: Clean package cache
+      apt:
+        autoclean: yes
+        autoremove: yes
+      when: confirm_removal | default(false) | bool
+
+    - name: Attempt to remove ARM64 foreign architecture
+      command: "dpkg --remove-architecture {{ target_foreign_arch }}"
+      register: arch_removal
+      failed_when: false
+      when: confirm_removal | default(false) | bool
+
+    - name: Force remove ARM64 architecture if normal removal fails
+      command: "dpkg --remove-architecture {{ target_foreign_arch }} --force-architecture"
+      when: 
+        - confirm_removal | default(false) | bool
+        - arch_removal is failed
+        - force_arch_removal | default(false) | bool
+
+    - name: Verify foreign architecture removal
+      command: dpkg --print-foreign-architectures
+      register: final_foreign_archs
+      changed_when: false
+
+    - name: Display final architecture status
+      debug:
+        msg:
+          - "Primary architecture: {{ dpkg_primary_arch.stdout }}"
+          - "Remaining foreign architectures: {{ final_foreign_archs.stdout_lines | default(['none']) }}"
+
+    - name: Update package lists
+      # This should now succeed without ARM64 architecture errors like:
+      # "Skipping acquire of configured file 'main/binary-arm64/Packages'"
+      apt:
+        update_cache: yes
+      when: 
+        - confirm_removal | default(false) | bool
+        - target_foreign_arch not in final_foreign_archs.stdout_lines | default([])
+
+  when: needs_arm64_cleanup | bool
+
+- name: Summary report
+  debug:
+    msg:
+      - "=== ARM64 Cleanup Summary ==="
+      - "Cleanup was needed: {{ needs_arm64_cleanup }}"
+      - "Packages found: {{ arm64_packages.stdout_lines | default([]) | length }}"
+      - "Foreign architectures remaining: {{ final_foreign_archs.stdout_lines | default(dpkg_foreign_archs.stdout_lines) | default(['none']) }}"
+  when: needs_arm64_cleanup | bool
+
+# Safety task - warn if running without confirmation
+- name: Safety warning
+  debug:
+    msg:
+      - "WARNING: This task file found ARM64 packages that need removal."
+      - "These packages are likely causing your apt-get update failures."
+      - "To actually perform the cleanup, run with:"
+      - "ansible-playbook playbook.yml -e confirm_removal=true"
+      - "To force architecture removal if needed, also add:"
+      - "ansible-playbook playbook.yml -e confirm_removal=true -e force_arch_removal=true"
+  when: 
+    - needs_arm64_cleanup | bool
+    - not (confirm_removal | default(false) | bool)

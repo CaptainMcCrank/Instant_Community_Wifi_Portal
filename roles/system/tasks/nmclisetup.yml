@@ -84,18 +84,19 @@
       debug:
         var: nm_pgrep
 
-    # Wait for NetworkManager to be ready with multiple checks
-    - name: Wait for NetworkManager to be ready
-      wait_for:
-        path: /var/run/NetworkManager/NetworkManager.pid
-        timeout: 60
-      register: nm_ready
-      ignore_errors: true
 
     - name: Check if NetworkManager PID file exists
       stat:
         path: /var/run/NetworkManager/NetworkManager.pid
       register: nm_pid_file
+
+    # This doesn't seem to move the needle at all always comes back incomplete.  fatal: [ansibledest.local]: FAILED! => {"changed": false, "elapsed": 60, "msg": "Timeout when waiting for file /var/run/NetworkManager/NetworkManager.pid"}
+    # Wait for NetworkManager to be ready with multiple checks
+    #- name: Wait for NetworkManager to be ready
+    #  wait_for:
+    #    path: /var/run/NetworkManager/NetworkManager.pid
+    #    timeout: 60
+    ## ignore_errors: true
 
     - name: Display NetworkManager PID file status
       debug:
@@ -170,6 +171,13 @@
           - "SSID: {{ ssid }}"
 
     # Verify the selected interface exists
+
+    #  this seems to fail: 
+    # TASK [system : Check if selected WiFi interface exists] **********************************************************************
+#task path: /home/pi/Playbooks/Instant_Community_Wifi_Portal/roles/system/tasks/nmclisetup.yml:174
+#fatal: [ansibledest.local]: FAILED! => {"changed": false, "cmd": ["nmcli", "device", "status", "|", "grep", "wlan1"], "delta": "0:00:00.103529", "end": "2025-08-17 11:38:03.426143", "msg": "non-zero return code", "rc": 2, "start": "2025-08-17 11:38:03.322614", "stderr": "Error: invalid extra argument '|'.", "stderr_lines": ["Error: invalid extra argument '|'."], "stdout": "", "stdout_lines": []}
+# ...ignoring
+
     - name: Check if selected WiFi interface exists
       command: nmcli device status | grep "{{ wifi_interface }}"
       register: interface_check
@@ -204,6 +212,16 @@
       debug:
         msg: "Final selected WiFi interface: {{ wifi_interface }}"
 
+    # CRITICAL SAFETY CHECK: Abort if wlan0 is selected for AP
+    - name: SAFETY CHECK - Prevent using wlan0 for AP (would break internet)
+      fail:
+        msg: |
+          CRITICAL ERROR: wifi_interface is set to '{{ wifi_interface }}' but wlan0 should NEVER be used for AP!
+          wlan0 is the internet gateway interface and must be preserved.
+          Expected: wlan1 (AP interface)
+          This would orphan the device by breaking internet connectivity.
+      when: wifi_interface == "wlan0"
+
     # Check if NetworkManager connection exists
     - name: Check if AP connection profile exists
       command: nmcli connection show "{{ ap_name }}"
@@ -218,24 +236,28 @@
         conn_name: "{{ ap_name }}"
       when: nmcli_show_result.rc == 0
 
-    # Also check for any existing connections with the same SSID and delete them
-    - name: Check for existing connections with same SSID
-      shell: nmcli -t -f connection connection show | grep -i wifi || true
-      register: existing_wifi_connections
+    # SAFETY: Only check for AP connections on wlan1, NEVER delete wlan0 connections
+    - name: Check for existing AP connections on wlan1 only (SAFE)
+      shell: nmcli -t -f NAME,DEVICE connection show | grep ":{{ wifi_interface }}$" || true
+      register: existing_ap_connections
       changed_when: false
       ignore_errors: true
 
-    - name: Display existing WiFi connections
+    - name: Display existing AP connections on target interface
       debug:
-        var: existing_wifi_connections.stdout_lines
+        msg: |
+          Only checking AP connections on {{ wifi_interface }}, NOT touching wlan0
+          Found connections: {{ existing_ap_connections.stdout_lines | default([]) }}
 
-    - name: Delete any existing connections with the same SSID
-      command: nmcli connection delete "{{ item }}"
-      loop: "{{ existing_wifi_connections.stdout_lines | map('regex_replace', '^([^:]+):.*', '\\1') | list }}"
+    - name: Delete only AP connections on target interface (SAFE - excludes wlan0)
+      command: nmcli connection delete "{{ item.split(':')[0] }}"
+      loop: "{{ existing_ap_connections.stdout_lines }}"
       when: 
-        - existing_wifi_connections.stdout_lines is defined
+        - existing_ap_connections.stdout_lines is defined
         - item is not none
         - item != ""
+        - item.split(':')[1] == wifi_interface
+        - wifi_interface != "wlan0"  # SAFETY: Never delete wlan0 connections
       ignore_errors: true
 
     # Create the access point connection (delete first to ensure clean state)
@@ -327,13 +349,16 @@
       debug:
         var: wifi_interface_status.stdout_lines
 
-    # Disconnect the interface from any existing connections first
-    - name: Disconnect WiFi interface from existing connections
+    # SAFETY: Only disconnect AP interface (wlan1), NEVER disconnect wlan0 
+    - name: Disconnect AP interface from existing connections (SAFE - wlan1 only)
       command: nmcli device disconnect "{{ wifi_interface }}"
       register: disconnect_result
       changed_when: false
       ignore_errors: true
-      when: wifi_interface_status.rc == 0
+      when: 
+        - wifi_interface_status.rc == 0
+        - wifi_interface != "wlan0"  # SAFETY: Never disconnect wlan0 (internet connection)
+        - wifi_interface == "wlan1"   # SAFETY: Only disconnect intended AP interface
 
     - name: Display disconnect result
       debug:

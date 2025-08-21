@@ -1,0 +1,115 @@
+---
+# Docker-based cross-compilation for RTL8812AU driver
+# This approach uses Docker to create a consistent build environment
+
+- name: Create Docker build script
+  copy:
+    dest: /tmp/build_rtl8812au_docker.sh
+    mode: '0755'
+    content: |
+      #!/bin/bash
+      set -e
+      
+      # Create Dockerfile for cross-compilation
+      cat > /tmp/Dockerfile.rtl8812au << 'EOF'
+      FROM ubuntu:20.04
+      
+      ENV DEBIAN_FRONTEND=noninteractive
+      
+      # Install cross-compilation toolchain
+      RUN apt-get update && apt-get install -y \
+          gcc-arm-linux-gnueabihf \
+          g++-arm-linux-gnueabihf \
+          binutils-arm-linux-gnueabihf \
+          libc6-dev-armhf-cross \
+          linux-headers-generic \
+          build-essential \
+          git \
+          wget \
+          ca-certificates \
+          && rm -rf /var/lib/apt/lists/*
+      
+      # Set up build environment
+      ENV ARCH=arm
+      ENV CROSS_COMPILE=arm-linux-gnueabihf-
+      
+      WORKDIR /build
+      
+      # Clone driver source
+      RUN git clone https://github.com/morrownr/8812au-20210820.git 8812au_src
+      
+      # Download and extract kernel headers
+      RUN wget -O linux-headers.tar.gz https://github.com/raspberrypi/linux/archive/refs/tags/1.20230405.tar.gz && \
+          tar -xzf linux-headers.tar.gz && \
+          rm linux-headers.tar.gz
+      
+      # Configure Makefile
+      RUN sed -i 's/CONFIG_PLATFORM_I386_PC = y/CONFIG_PLATFORM_I386_PC = n/' 8812au_src/Makefile && \
+          sed -i 's/CONFIG_PLATFORM_ARM_RPI = n/CONFIG_PLATFORM_ARM_RPI = y/' 8812au_src/Makefile
+      
+      # Set kernel source path
+      ENV KSRC=/build/linux-1.20230405
+      
+      # Build the driver
+      RUN make -C 8812au_src
+      
+      # Create output directory
+      RUN mkdir -p /output
+      
+      # Copy built files
+      RUN cp -r 8812au_src/* /output/
+      
+      # Create archive
+      RUN tar -czf /output/rtl8812au_precompiled.tar.gz -C /output .
+      EOF
+      
+      # Build Docker image
+      docker build -f /tmp/Dockerfile.rtl8812au -t rtl8812au-builder .
+      
+      # Run container and extract built files
+      docker run --rm -v /tmp:/output rtl8812au-builder cp /output/rtl8812au_precompiled.tar.gz /output/
+      
+      echo "Build completed. Precompiled driver is at /tmp/rtl8812au_precompiled.tar.gz"
+  when: ansible_architecture == "x86_64"
+
+- name: Execute Docker build script
+  shell: /tmp/build_rtl8812au_docker.sh
+  when: ansible_architecture == "x86_64"
+
+- name: Copy precompiled driver to target
+  copy:
+    src: /tmp/rtl8812au_precompiled.tar.gz
+    dest: /tmp/rtl8812au_precompiled.tar.gz
+    mode: '0644'
+  when: ansible_architecture == "x86_64"
+
+# Tasks to run on the target Raspberry Pi
+- name: Extract precompiled driver on target
+  unarchive:
+    src: /tmp/rtl8812au_precompiled.tar.gz
+    dest: /home/pi/
+    remote_src: yes
+  when: ansible_architecture == "armv7l"
+
+- name: Install precompiled driver
+  shell: make install -C /home/pi/8812au_src
+  become: true
+  when: ansible_architecture == "armv7l"
+
+- name: Run install script for precompiled driver
+  expect:
+    command: sudo ./install-driver.sh
+    chdir: /home/pi/8812au_src
+    responses:
+      'Do you want to edit the driver options file now\? \(recommended\) \[Y/n\]': 'n'
+      'Do you want to apply the new options by rebooting now\? \(recommended\) \[Y/n\]': 'n'
+    timeout: 1800
+  become: true
+  when: ansible_architecture == "armv7l"
+
+- name: Restart NetworkManager
+  service:
+    name: NetworkManager
+    state: restarted
+  become: true
+  when: ansible_architecture == "armv7l" 

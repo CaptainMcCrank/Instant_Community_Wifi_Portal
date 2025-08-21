@@ -1,0 +1,16 @@
+---
+description: Cloudflare Credentials Guardrials
+globs:
+alwaysApply: false
+---
+
+
+- use the cloudfared tunnel command with the --credentials-file argument to obtaining cloudflare credentials.  E.g. (bash cloudflared tunnel token --credentials-file /path/to/credentials.json tunnel-name)
+
+- Avoid manually creating json files with tokens.  
+- If you experience invalid credential errors, be wary about trying to manually create a json file, as this tends to produce errors that endlessly produce new errors during troubleshooting
+- Always use --credentials-file for proper JSON format
+- Check user context - ensure commands run as the right user
+- Handle existing tunnels gracefully - don't assume they need to be created
+- Test credentials automatically - don't assume they work
+- Provide better user experience in ansible playbooks or scripts for troubleshooting cloudflare- clear guidance and pauses when needed

@@ -1,0 +1,119 @@
+---
+# Cross-compilation approach for RTL8812AU driver
+# This task should be run on the build system (your Linux machine) to precompile the driver
+
+- name: Install cross-compilation toolchain on build system
+  apt:
+    name:
+      - gcc-arm-linux-gnueabihf
+      - g++-arm-linux-gnueabihf
+      - binutils-arm-linux-gnueabihf
+      - libc6-dev-armhf-cross
+      - linux-headers-generic
+      - build-essential
+      - git
+      - wget
+    state: present
+  when: ansible_architecture == "x86_64"  # Only run on build system
+
+- name: Create build directory
+  file:
+    path: /tmp/rtl8812au_build
+    state: directory
+    mode: '0755'
+
+- name: Clone RTL8812AU driver source
+  git:
+    repo: https://github.com/morrownr/8812au-20210820.git
+    dest: /tmp/rtl8812au_build/8812au_src
+    force: yes
+    accept_hostkey: yes
+  when: ansible_architecture == "x86_64"
+
+- name: Download Raspberry Pi kernel headers
+  get_url:
+    url: "https://github.com/raspberrypi/linux/archive/refs/tags/{{ rpi_kernel_version | default('1.20230405') }}.tar.gz"
+    dest: /tmp/rtl8812au_build/linux-headers.tar.gz
+    mode: '0644'
+  when: ansible_architecture == "x86_64"
+
+- name: Extract kernel headers
+  unarchive:
+    src: /tmp/rtl8812au_build/linux-headers.tar.gz
+    dest: /tmp/rtl8812au_build/
+    remote_src: yes
+  when: ansible_architecture == "x86_64"
+
+- name: Configure Makefile for cross-compilation
+  replace:
+    path: /tmp/rtl8812au_build/8812au_src/Makefile
+    regexp: 'CONFIG_PLATFORM_I386_PC = y'
+    replace: 'CONFIG_PLATFORM_I386_PC = n'
+  when: ansible_architecture == "x86_64"
+
+- name: Configure Makefile for ARM Raspberry Pi
+  replace:
+    path: /tmp/rtl8812au_build/8812au_src/Makefile
+    regexp: 'CONFIG_PLATFORM_ARM_RPI = n'
+    replace: 'CONFIG_PLATFORM_ARM_RPI = y'
+  when: ansible_architecture == "x86_64"
+
+- name: Set cross-compilation environment variables
+  environment:
+    ARCH: arm
+    CROSS_COMPILE: arm-linux-gnueabihf-
+    KSRC: /tmp/rtl8812au_build/linux-{{ rpi_kernel_version | default('1.20230405') }}
+  when: ansible_architecture == "x86_64"
+
+- name: Cross-compile the driver
+  shell: make -C /tmp/rtl8812au_build/8812au_src
+  environment:
+    ARCH: arm
+    CROSS_COMPILE: arm-linux-gnueabihf-
+    KSRC: /tmp/rtl8812au_build/linux-{{ rpi_kernel_version | default('1.20230405') }}
+  when: ansible_architecture == "x86_64"
+
+- name: Create precompiled driver package
+  archive:
+    path: /tmp/rtl8812au_build/8812au_src/
+    dest: /tmp/rtl8812au_precompiled.tar.gz
+    format: gz
+  when: ansible_architecture == "x86_64"
+
+- name: Copy precompiled driver to target
+  copy:
+    src: /tmp/rtl8812au_precompiled.tar.gz
+    dest: /tmp/rtl8812au_precompiled.tar.gz
+    mode: '0644'
+  when: ansible_architecture == "x86_64"
+
+# Tasks to run on the target Raspberry Pi
+- name: Extract precompiled driver on target
+  unarchive:
+    src: /tmp/rtl8812au_precompiled.tar.gz
+    dest: /home/pi/
+    remote_src: yes
+  when: ansible_architecture == "armv7l"
+
+- name: Install precompiled driver
+  shell: make install -C /home/pi/8812au_src
+  become: true
+  when: ansible_architecture == "armv7l"
+
+- name: Run install script for precompiled driver
+  expect:
+    command: sudo ./install-driver.sh
+    chdir: /home/pi/8812au_src
+    responses:
+      'Do you want to edit the driver options file now\? \(recommended\) \[Y/n\]': 'n'
+      'Do you want to apply the new options by rebooting now\? \(recommended\) \[Y/n\]': 'n'
+    timeout: 1800
+  become: true
+  when: ansible_architecture == "armv7l"
+
+- name: Restart NetworkManager
+  service:
+    name: NetworkManager
+    state: restarted
+  become: true
+  when: ansible_architecture == "armv7l" 

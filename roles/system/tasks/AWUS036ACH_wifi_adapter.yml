@@ -1,143 +1,27 @@
 ---
-# the following 2 commands are probably not needed.  
-# I was getting prompted for credentials because the github repository
-# was no longer valid.  I updated to the new version and now the clone is working.
-# //todo: test a build where I remvoe the configure git and disable cred helper.
 
-#    - name: Configure Git to not prompt for credentials
-#      ansible.builtin.command:
-#        cmd: git config --global --add url."https://".insteadOf git://
-  
-#    - name: Disable credential helper
-#      ansible.builtin.command:
-#        cmd: git config --global credential.helper ""
+# Tested to work on Linux  6.12.25+rpt-rpi-v7 #1 SMP Raspbian 1:6.12.25-1+rpt1 (2025-04-30) armv7l GNU/Linux
+# 8/13/2025
 
-    - name: Fix broken packages before installing driver prerequisites
+
+
+
+    - name: Run apt-get update & upgrade
       apt:
         upgrade: dist
-        update_cache: yes
-
-#    - name: Install specific version of libssl3 with downgrades allowed
-##      apt:
- #       name: libssl3=3.0.15-1~deb12u1
- #       state: present
- #       dpkg_options: "--allow-downgrades"
-
-    - name: Install driver prerequisites
-      apt:
-       name: "{{ item }}"
-       state: present
-      loop:
-#        - bison
-#        - flex
-        #- libssl-dev
-        #- python2
-        # - raspberrypi-kernel-headers
-##        - libncurses5-dev
-#       - bc
-        - dkms
-        - rfkill
-
-
-    - name: wget rpi-source
-      command: wget -O /usr/local/bin/rpi-source  https://raw.githubusercontent.com/RPi-Distro/rpi-source/master/rpi-source
-
-
-
-    - name: Change ownership of rpi-source
-      ansible.builtin.file:
-        path: /usr/local/bin/rpi-source
-        owner: pi
-        group: pi
-        mode: 0740
-
-#    - name: update rpi-source
-#      ansible.builtin.expect:
-#       command: /usr/bin/rpi-update
-#       responses:
-##         (?i)proceed?: "y"
-#      timeout: 10000 #1800 
-
-#    - name: launch the reboot
-#      shell: 'sleep 1 && shutdown -r now "Reboot triggered by Ansible" && sleep 1'
-#      async: 1
-#      poll: 0
-
-#    - name: Wait for server to restart
-#      local_action:
-#        module: wait_for
-#          host={{ inventory_hostname }}
-#          port=22
-#          delay=10
-
-    - name: update rpi-source
-      shell: yes "" | /usr/local/bin/rpi-source --tag-update
-      timeout: 1800
-      become: true
-
-    - name: run rpi-source
-      shell: yes "" | /usr/local/bin/rpi-source -v || /bin/true # added timeout to avoid indefinite hangs.  added -v to give more detail
-      ignore_errors: true
-      args:
-        executable: /bin/bash
-      become_user: pi
-
-    - name: Run apt-get update
-      apt:
         update_cache: yes 
-
-    - name: enable kernel headers
-      command: apt policy raspberrypi-kernel-headers
-    
-    - name: Debug linux_dir variable
-      debug:
-        var: linux_dir
-
-# prepare to fix the linux source we pulled to overcome kernel configuration is invalid error.
-    
-    - name: Find Linux directory
-      find:
-        paths: /home/pi
-        patterns: "linux-*"
-        file_type: directory
-      register: linux_dir
-
-    - name: Debug linux_dir variable
-      debug:
-        var: linux_dir
-
-    - name: Run make commands in Linux directory
-      shell: yes "" | make oldconfig && make prepare #using yes "" | make oldconfig which pipes "yes" to the command, accepting all defaults for any configuration prompts. 
-      args:
-        chdir: "{{ item.path }}"
-        executable: /bin/bash
-      become: true
-      become_user: pi
-      with_items: "{{ linux_dir.files }}"
-      when: linux_dir.matched > 0
-
-    #- name: Install RTL8812AU driver
-    #  shell: 
-    #    cmd: make dkms_install && make oldconfig && make prepare
-    #    chdir: /home/pi/8812au_src/
-    #  become: true
 
     - name: Clone of 8812au-20210820.git drivers
       ansible.builtin.git:
-        #repo: https://github.com/morrownr/8812au-20210629.git
         repo: https://github.com/morrownr/8812au-20210820.git
-        #repo: https://github.com/aircrack-ng/rtl8812au.git
         dest: /home/pi/8812au_src
         force: yes
-        #version: master
         accept_hostkey: yes
-      #register: git_clone_result
+      register: git_clone_result
       retries: 3
-      #delay: 10
-      #until: git_clone_result is succeeded
+      until: git_clone_result is succeeded
       tags:
-       - nodogsplash
-       - streamer
+       - AWUS036ACH
     
     - name: Set correct permissions on driver directory
       file:
@@ -149,31 +33,17 @@
         recurse: yes
       become: true
 
-    - name: Run make commands in driver directory
-      shell: make 
-      args:
-        chdir: /home/pi/8812au_src/
-        executable: /bin/bash
-      become: true
-      become_user: pi
+#    - name: Change CONFIG_PLATFORM_I386_PC from y to n
+##      ansible.builtin.replace:
+#        path: /home/pi/8812au_src/Makefile
+#        regexp: 'CONFIG_PLATFORM_I386_PC = y'
+#        replace: 'CONFIG_PLATFORM_I386_PC = n'
 
-    - name: Change CONFIG_PLATFORM_I386_PC from y to n
-      ansible.builtin.replace:
-        path: /home/pi/8812au_src/Makefile
-        regexp: 'CONFIG_PLATFORM_I386_PC = y'
-        replace: 'CONFIG_PLATFORM_I386_PC = n'
-
-    - name: Change CONFIG_PLATFORM_ARM_RPI from n to y
-      ansible.builtin.replace:
-        path: /home/pi/8812au_src/Makefile
-        regexp: 'CONFIG_PLATFORM_ARM_RPI = n'
-        replace: 'CONFIG_PLATFORM_ARM_RPI = y'
-
-    - name: Install the compiled driver
-      ansible.builtin.command:
-        cmd: make install
-        chdir: /home/pi/8812au_src
-      become: true
+ #   - name: Change CONFIG_PLATFORM_ARM_RPI from n to y
+ #     ansible.builtin.replace:
+#        path: /home/pi/8812au_src/Makefile
+ #       regexp: 'CONFIG_PLATFORM_ARM_RPI = n'
+ #       replace: 'CONFIG_PLATFORM_ARM_RPI = y'
 
     - name: Run install-driver.sh with automatic responses to prompts
       ansible.builtin.expect:
@@ -185,9 +55,19 @@
         timeout: 1800
       become: true
 
+# This causes the device to get orphaned and should be avoided.
+#    - name: Restart NetworkManager
+#      ansible.builtin.service:
+#        name: NetworkManager
+#        state: restarted
+##      become: true
 
-    - name: Restart NetworkManager
-      ansible.builtin.service:
-        name: NetworkManager
-        state: restarted
+    - name: Show IP address information
+      ansible.builtin.shell: ip a | cat
       become: true
+
+    - name: Reboot the system
+      reboot:
+        reboot_timeout: 300
+        pre_reboot_delay: 0
+        post_reboot_delay: 30

@@ -13,6 +13,15 @@
        when: selfie_app_enabled | default(true)
    
    post_tasks:
+     - name: Copy avahi configuration (after hostname setup)
+       copy:
+         src: "{{ playbook_dir }}/etc/avahi/avahi-daemon.conf"
+         dest: /etc/avahi/avahi-daemon.conf
+         owner: root
+         group: root
+         mode: '0644'
+       tags: final_hostname_change
+         
      - name: Set final hostname (after all roles complete)
        ansible.builtin.hostname:
          name: "{{ hostname }}"
@@ -30,5 +39,11 @@
        lineinfile:
          path: /etc/hosts
          line: '{{ wifi_ip }} {{ hostname }} {{ hostname }}'
+       tags: final_hostname_change
+     
+     - name: Restart avahi-daemon after config and hostname changes
+       systemd:
+         name: avahi-daemon
+         state: restarted
        tags: final_hostname_change
    

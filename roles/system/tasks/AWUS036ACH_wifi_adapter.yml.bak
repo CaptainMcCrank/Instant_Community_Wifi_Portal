@@ -1,0 +1,534 @@
+---
+# the following 2 commands are probably not needed.  
+# I was getting prompted for credentials because the github repository
+# was no longer valid.  I updated to the new version and now the clone is working.
+# //todo: test a build where I remvoe the configure git and disable cred helper.
+
+#    - name: Configure Git to not prompt for credentials
+#      ansible.builtin.command:
+#        cmd: git config --global --add url."https://".insteadOf git://
+  
+#    - name: Disable credential helper
+#      ansible.builtin.command:
+#        cmd: git config --global credential.helper ""
+
+    - name: Fix broken packages before installing driver prerequisites
+      apt:
+        upgrade: dist
+        update_cache: yes
+
+#    - name: Install specific version of libssl3 with downgrades allowed
+##      apt:
+ #       name: libssl3=3.0.15-1~deb12u1
+ #       state: present
+ #       dpkg_options: "--allow-downgrades"
+
+    - name: Check available kernel headers packages
+      shell: apt search linux-headers | grep -E "(rpi|raspberry)" | head -10
+      register: available_kernel_headers
+      become: true
+
+    - name: Display available kernel headers
+      debug:
+        var: available_kernel_headers
+
+    - name: Install driver prerequisites
+      apt:
+       name: "{{ item }}"
+       state: present
+      loop:
+        - bison
+        - flex
+        #- libssl-dev
+        #- python2
+        # - raspberrypi-kernel-headers
+##        - libncurses5-dev
+#       - bc
+        - dkms
+        - rfkill
+        - build-essential
+
+    - name: Install kernel headers if available
+      apt:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - linux-headers-rpi-v7l
+        - raspberrypi-kernel-headers
+        - linux-headers-6.12.40-v7+
+      ignore_errors: true
+
+
+    - name: wget rpi-source
+      command: wget -O /usr/local/bin/rpi-source  https://raw.githubusercontent.com/RPi-Distro/rpi-source/master/rpi-source
+
+
+
+    - name: Change ownership of rpi-source
+      ansible.builtin.file:
+        path: /usr/local/bin/rpi-source
+        owner: pi
+        group: pi
+        mode: 0740
+
+    - name: update rpi-source
+      ansible.builtin.expect:
+       command: /usr/bin/rpi-update
+       responses:
+         "Would you like to proceed\\? \\(y/N\\)": "y"
+       timeout: 10000 #1800 
+
+    - name: launch the reboot
+      shell: 'sleep 1 && shutdown -r now "Reboot triggered by Ansible" && sleep 1'
+      async: 1
+      poll: 0
+
+    - name: Wait for server to restart
+      local_action:
+        module: wait_for
+          host={{ inventory_hostname }}
+          port=22          delay=10
+
+
+    - name: Run apt-get update
+      apt:
+        update_cache: yes 
+
+    - name: enable kernel headers
+      command: apt policy raspberrypi-kernel-headers
+    
+
+# prepare to fix the linux source we pulled to overcome kernel configuration is invalid error.
+    
+    - name: Find Linux directory
+      find:
+        paths: /home/pi
+        patterns: "linux-*"
+        file_type: directory
+      register: linux_dir
+
+    - name: Debug linux_dir variable
+      debug:
+        var: linux_dir
+
+    - name: Run make commands in Linux directory
+      shell: yes "" | make oldconfig && make prepare #using yes "" | make oldconfig which pipes "yes" to the command, accepting all defaults for any configuration prompts. 
+      args:
+        chdir: "{{ item.path }}"
+        executable: /bin/bash
+      become: true
+      become_user: pi
+      with_items: "{{ linux_dir.files }}"
+      when: linux_dir.matched > 0
+
+    #- name: Install RTL8812AU driver
+    #  shell: 
+    #    cmd: make dkms_install && make oldconfig && make prepare
+    #    chdir: /home/pi/8812au_src/
+    #  become: true
+
+    - name: Clone of 8812au-20210820.git drivers
+      ansible.builtin.git:
+        #repo: https://github.com/morrownr/8812au-20210629.git
+        repo: https://github.com/morrownr/8812au-20210820.git
+        #repo: https://github.com/aircrack-ng/rtl8812au.git
+        dest: /home/pi/8812au_src
+        force: yes
+        #version: master
+        accept_hostkey: yes
+      #register: git_clone_result
+      retries: 3
+      #delay: 10
+      #until: git_clone_result is succeeded
+      tags:
+       - nodogsplash
+       - streamer
+    
+    - name: Set correct permissions on driver directory
+      file:
+        path: /home/pi/8812au_src
+        state: directory
+        owner: pi
+        group: pi
+        mode: '0755'
+        recurse: yes
+      become: true
+
+    - name: Change CONFIG_PLATFORM_I386_PC from y to n
+      ansible.builtin.replace:
+        path: /home/pi/8812au_src/Makefile
+        regexp: 'CONFIG_PLATFORM_I386_PC = y'
+        replace: 'CONFIG_PLATFORM_I386_PC = n'
+
+    - name: Change CONFIG_PLATFORM_ARM_RPI from n to y
+      ansible.builtin.replace:
+        path: /home/pi/8812au_src/Makefile
+        regexp: 'CONFIG_PLATFORM_ARM_RPI = n'
+        replace: 'CONFIG_PLATFORM_ARM_RPI = y'
+
+    - name: Check current kernel version
+      shell: uname -r
+      register: kernel_version
+      become: true
+
+    - name: Display kernel version
+      debug:
+        var: kernel_version
+
+    - name: Check if kernel headers build directory exists
+      shell: ls -la /lib/modules/$(uname -r)/build || echo "Build directory does not exist"
+      register: kernel_headers_check
+      become: true
+      ignore_errors: true
+
+    - name: Display kernel headers check result
+      debug:
+        var: kernel_headers_check
+
+    - name: Fix kernel headers symlink
+      shell: |
+        KERNEL_VERSION=$(uname -r)
+        echo "Current kernel version: $KERNEL_VERSION"
+        
+        # First, try to find the Linux source directory
+        LINUX_DIR=$(find /home/pi -maxdepth 1 -name "linux-*" -type d | head -1)
+        
+        if [ -n "$LINUX_DIR" ]; then
+          echo "Found Linux directory: $LINUX_DIR"
+          sudo rm -f /lib/modules/$KERNEL_VERSION/build
+          sudo ln -sf "$LINUX_DIR" /lib/modules/$KERNEL_VERSION/build
+          echo "Updated symlink to point to: $LINUX_DIR"
+        else
+          echo "No Linux directory found in /home/pi, trying alternative locations..."
+          
+          # Try to find Linux source in other common locations
+          LINUX_DIR=$(find /usr/src -maxdepth 1 -name "linux-*" -type d | head -1)
+          if [ -n "$LINUX_DIR" ]; then
+            echo "Found Linux directory in /usr/src: $LINUX_DIR"
+            sudo rm -f /lib/modules/$KERNEL_VERSION/build
+            sudo ln -sf "$LINUX_DIR" /lib/modules/$KERNEL_VERSION/build
+            echo "Updated symlink to point to: $LINUX_DIR"
+          else
+            echo "No Linux source found, attempting to install kernel headers..."
+            sudo apt-get update
+            sudo apt-get install -y raspberrypi-kernel-headers
+            echo "Kernel headers installed, checking again..."
+            ls -la /lib/modules/$KERNEL_VERSION/build || echo "Still no build directory"
+          fi
+        fi
+      register: fix_symlink_result
+      become: true
+
+    - name: Display symlink fix result
+      debug:
+        var: fix_symlink_result
+
+    - name: Verify kernel headers symlink
+      shell: ls -la /lib/modules/$(uname -r)/build || echo "Build directory still missing"
+      register: kernel_headers_check_after_fix
+      become: true
+      ignore_errors: true
+
+    - name: Display kernel headers check after fix
+      debug:
+        var: kernel_headers_check_after_fix
+
+    - name: Install kernel headers if build directory is still missing
+      block:
+        - name: Install raspberrypi-kernel-headers
+          apt:
+            name: raspberrypi-kernel-headers
+            state: present
+            update_cache: yes
+          become: true
+
+        - name: Check if build directory exists after package installation
+          shell: ls -la /lib/modules/$(uname -r)/build || echo "Build directory still missing after package install"
+          register: kernel_headers_after_package
+          become: true
+          ignore_errors: true
+
+        - name: Display kernel headers after package installation
+          debug:
+            var: kernel_headers_after_package
+
+        - name: Create build symlink manually if needed
+          shell: |
+            KERNEL_VERSION=$(uname -r)
+            if [ ! -L "/lib/modules/$KERNEL_VERSION/build" ]; then
+              echo "Creating build symlink manually..."
+              sudo ln -sf /usr/src/linux-headers-$KERNEL_VERSION /lib/modules/$KERNEL_VERSION/build
+              echo "Created symlink to /usr/src/linux-headers-$KERNEL_VERSION"
+            else
+              echo "Build symlink already exists"
+            fi
+          become: true
+          ignore_errors: true
+          register: manual_symlink_result
+
+        - name: Display manual symlink result
+          debug:
+            var: manual_symlink_result
+
+      when: "'Build directory still missing' in kernel_headers_check_after_fix.stdout"
+
+    - name: Check if 8812au.ko exists before make
+      shell: ls -la /home/pi/8812au_src/8812au.ko || echo "File does not exist"
+      register: ko_file_check_before
+      become: true
+      become_user: pi
+
+    - name: Display ko file check before make
+      debug:
+        var: ko_file_check_before
+
+    - name: Run make clean first
+      shell: make clean
+      args:
+        chdir: /home/pi/8812au_src/
+        executable: /bin/bash
+      become: true
+      become_user: pi
+      ignore_errors: true
+
+    - name: Check kernel module build tools
+      shell: |
+        echo "Checking kernel module build tools..."
+        which modprobe || echo "modprobe not found"
+        which depmod || echo "depmod not found"
+        ls -la /lib/modules/$(uname -r)/build/scripts/module.lds || echo "module.lds not found"
+        ls -la /lib/modules/$(uname -r)/build/scripts/module.lds || echo "module.lds not found"
+      register: build_tools_check
+      become: true
+
+    - name: Display build tools check
+      debug:
+        var: build_tools_check
+
+    - name: Create module.lds fix script
+      copy:
+        dest: /tmp/fix_module_lds.sh
+        mode: '0755'
+        content: |
+          #!/bin/bash
+          KERNEL_VERSION=$(uname -r)
+          LINUX_DIR="/lib/modules/$KERNEL_VERSION/build"
+          
+          echo "Checking if module.lds exists..."
+          if [ ! -f "$LINUX_DIR/scripts/module.lds" ]; then
+            echo "module.lds is missing, creating it..."
+            
+            # Create the scripts directory if it doesn't exist
+            mkdir -p "$LINUX_DIR/scripts"
+            
+            # Create a basic module.lds file
+            cat > "$LINUX_DIR/scripts/module.lds" << 'MODULE_LDS_EOF'
+          SECTIONS
+          {
+            . = ALIGN(4096);
+            .text : {
+              *(.text)
+            }
+            .rodata : {
+              *(.rodata)
+            }
+            .data : {
+              *(.data)
+            }
+            .bss : {
+              *(.bss)
+            }
+          }
+          MODULE_LDS_EOF
+            
+            echo "Created module.lds file"
+          else
+            echo "module.lds already exists"
+          fi
+          
+          # Also check for other missing files
+          if [ ! -f "$LINUX_DIR/scripts/module.lds" ]; then
+            echo "Still missing module.lds after creation attempt"
+          else
+            echo "module.lds is now available"
+          fi
+
+    - name: Fix missing module.lds file
+      shell: /tmp/fix_module_lds.sh
+      register: fix_module_lds_result
+      become: true
+
+    - name: Display module.lds fix result
+      debug:
+        var: fix_module_lds_result
+
+    - name: Run make commands in driver directory
+      shell: make -j1
+      args:
+        chdir: /home/pi/8812au_src/
+        executable: /bin/bash
+      become: true
+      become_user: pi
+      register: make_result
+
+    - name: Display make result
+      debug:
+        var: make_result
+
+    - name: Check if 8812au.ko exists after make
+      shell: ls -la /home/pi/8812au_src/8812au.ko || echo "File does not exist"
+      register: ko_file_check_after
+      become: true
+      become_user: pi
+
+    - name: Display ko file check after make
+      debug:
+        var: ko_file_check_after
+
+    - name: Check if compilation failed and try alternative approach
+      block:
+        - name: Check kernel source compatibility
+          shell: |
+            KERNEL_VERSION=$(uname -r)
+            echo "Current kernel: $KERNEL_VERSION"
+            echo "Kernel build directory: /lib/modules/$KERNEL_VERSION/build"
+            ls -la /lib/modules/$KERNEL_VERSION/build/ || echo "Build directory not found"
+          register: kernel_compatibility_check
+          become: true
+
+        - name: Display kernel compatibility check
+          debug:
+            var: kernel_compatibility_check
+
+        - name: Try building with explicit kernel path
+          shell: |
+            KERNEL_VERSION=$(uname -r)
+            make clean
+            make KSRC=/lib/modules/$KERNEL_VERSION/build
+          args:
+            chdir: /home/pi/8812au_src/
+            executable: /bin/bash
+          become: true
+          become_user: pi
+          register: make_alternative_result
+          ignore_errors: true
+
+        - name: Try building with explicit module target
+          shell: |
+            KERNEL_VERSION=$(uname -r)
+            make clean
+            make modules KSRC=/lib/modules/$KERNEL_VERSION/build
+          args:
+            chdir: /home/pi/8812au_src/
+            executable: /bin/bash
+          become: true
+          become_user: pi
+          register: make_modules_result
+          ignore_errors: true
+
+        - name: Display modules make result
+          debug:
+            var: make_modules_result
+
+        - name: Display alternative make result
+          debug:
+            var: make_alternative_result
+
+        - name: Check if 8812au.ko exists after alternative make
+          shell: ls -la /home/pi/8812au_src/8812au.ko || echo "File still does not exist"
+          register: ko_file_check_alternative
+          become: true
+          become_user: pi
+
+        - name: Display alternative ko file check
+          debug:
+            var: ko_file_check_alternative
+
+      when: make_result.rc != 0 or "'File does not exist' in ko_file_check_after.stdout"
+
+    - name: Install the compiled driver
+      ansible.builtin.command:
+        cmd: make install
+        chdir: /home/pi/8812au_src
+      become: true
+
+    - name: Check if DKMS module exists before removal
+      shell: dkms status | grep rtl8812au || echo "No rtl8812au module found"
+      register: dkms_status_check
+      become: true
+
+    - name: Display DKMS status
+      debug:
+        var: dkms_status_check
+
+    - name: Remove existing driver installation if present
+      ansible.builtin.expect:
+        command: sudo ./remove-driver.sh
+        chdir: /home/pi/8812au_src
+        responses:
+          'Do you want to reboot now\? \(recommended\) \[Y/n\]': 'n'
+        timeout: 300
+      become: true
+      register: remove_driver_result
+
+    - name: Display remove driver result
+      debug:
+        var: remove_driver_result
+
+    - name: Force remove DKMS module if still present
+      shell: |
+        if dkms status | grep -q rtl8812au; then
+          echo "Force removing rtl8812au from DKMS..."
+          dkms remove rtl8812au/5.13.6-23 --all || echo "DKMS remove failed, continuing..."
+          rm -rf /usr/src/rtl8812au-5.13.6-23 || echo "Failed to remove source directory"
+          rm -rf /var/lib/dkms/rtl8812au || echo "Failed to remove DKMS lib directory"
+        else
+          echo "No rtl8812au module found in DKMS"
+        fi
+      become: true
+      ignore_errors: true
+      register: force_remove_result
+
+    - name: Display force remove result
+      debug:
+        var: force_remove_result
+
+    - name: Verify DKMS module is removed
+      shell: dkms status | grep rtl8812au || echo "rtl8812au module successfully removed"
+      register: dkms_verify_removal
+      become: true
+
+    - name: Display DKMS verification
+      debug:
+        var: dkms_verify_removal
+
+    - name: Clean up any remaining module files
+      shell: |
+        echo "Cleaning up any remaining module files..."
+        rm -f /lib/modules/$(uname -r)/kernel/drivers/net/wireless/8812au.ko || echo "No 8812au.ko in kernel modules"
+        rm -f /lib/modules/$(uname -r)/extra/8812au.ko || echo "No 8812au.ko in extra modules"
+        depmod -a || echo "depmod failed, continuing..."
+      become: true
+      ignore_errors: true
+      register: cleanup_result
+
+    - name: Display cleanup result
+      debug:
+        var: cleanup_result
+
+    - name: Run install-driver.sh with automatic responses to prompts
+      ansible.builtin.expect:
+        command: sudo ./install-driver.sh
+        chdir: /home/pi/8812au_src
+        responses:
+          'Do you want to edit the driver options file now\? \(recommended\) \[Y/n\]': 'n'
+          'Do you want to apply the new options by rebooting now\? \(recommended\) \[Y/n\]': 'n'
+        timeout: 1800
+      become: true
+
+
+    - name: Restart NetworkManager
+      ansible.builtin.service:
+        name: NetworkManager
+        state: restarted
+      become: true

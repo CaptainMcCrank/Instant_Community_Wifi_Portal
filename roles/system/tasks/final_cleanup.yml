@@ -1,4 +1,5 @@
 ---
+
    - name: Synchronization of files for resetting sources
      ansible.builtin.copy: 
        src: "{{ root_playbook_dir }}/etc/apt"
@@ -12,18 +13,19 @@
      command: mv /tmp/apt/sources.list.d/raspi.list.post /etc/apt/sources.list.d/raspi.list
      tags: AnsibleHousekeeping 
 
-   - name: wget the Filesystem resizer
-     command: wget -O /etc/init.d/resize2fs_once https://raw.githubusercontent.com/RPi-Distro/pi-gen/master/stage2/01-sys-tweaks/files/resize2fs_once
-     tags: AnsibleHousekeeping 
 
-   - name: chmod +x the filesystem resizer
-     file:
-       path: /etc/init.d/resize2fs_once
+# rpi removed this code for some reason.  I had to pull it over.
+#   - name: wget the Filesystem resizer
+#     command: wget -O /etc/init.d/resize2fs_once https://raw.githubusercontent.com/RPi-Distro/pi-gen/master/stage2/01-sys-tweaks/files/resize2fs_once
+#     tags: AnsibleHousekeeping 
+
+   - name: Synchronization of resize2fs_once
+     ansible.builtin.copy: 
+       src: "{{ root_playbook_dir }}/etc/init.d/resize2fs_once"
+       dest: /etc/init.d/resize2fs_once
        owner: root
        group: root
-       # when specifying mode using octal numbers, add a leading 0
        mode: 0755
-     tags: os_config_files
 
    - name: add quiet init=/usr/lib/raspi-config/init_resize.sh to /boot/cmdline.txt
      lineinfile:
@@ -47,16 +49,7 @@
      - os_config_files
      - AnsibleHousekeeping
 
-   - name: Set a hostname
-     ansible.builtin.hostname:
-       name: "{{ hostname }}"
-
-   - name: Copy avahi settings
-     copy:
-       src: "{{ root_playbook_dir }}/etc/avahi/avahi-daemon.conf"
-       dest: /etc/avahi/avahi-daemon.conf
-
-   - name: Copy /etc/hosts file #Likely needs updates if I change interfaces
+   - name: Copy /etc/hosts file (hostname will be set later in post_tasks)
      copy:
        src: "{{ root_playbook_dir }}/etc/hosts"
        dest: /etc/hosts
@@ -64,24 +57,11 @@
        group: root
        mode: 0755
      tags: os_config_files
-
-   - name: Update /etc/hosts file
-     lineinfile:
-       path: /etc/hosts
-       backrefs: yes
-       regexp: '^(127.0.0.1\tlocalhost)(\s+.*|$)'
-       line: '\1 {{ hostname }}'
-
-   - name: Append /etc/hosts file
-     lineinfile:
-       path: /etc/hosts
-       line: '{{ wifi_ip }} {{ hostname }} {{ hostname }}'
+     
+   # Note: Hostname changes moved to post_tasks in run.yml to ensure
+   # they happen AFTER cloudflare_tunnel and selfie_app roles complete
   
 
-   - name: Copy avahi settings
-     copy:
-       src: "{{ root_playbook_dir }}/etc/avahi/avahi-daemon.conf"
-       dest: /etc/avahi/avahi-daemon.conf
 
 
 #   - name: Enable UFW //todo: IMPORTANT: reenable this

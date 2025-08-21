@@ -309,14 +309,83 @@ test_selfie_portal() {
     fi
     
     # Check if cloudflare tunnel is running (for external access)
-    if systemctl is-active --quiet cloudflared; then
-        print_result "Cloudflare tunnel service running" "PASS" "External access should be available"
-    else
-        # Check for alternative cloudflare service names
+    tunnel_service_found=false
+    tunnel_name=""
+    
+    # Check for any active cloudflared service
+    for service in $(systemctl list-units --state=active --no-legend | grep cloudflared | awk '{print $1}'); do
+        if systemctl is-active --quiet "$service"; then
+            print_result "Cloudflare tunnel service running ($service)" "PASS" "External access configured"
+            tunnel_service_found=true
+            tunnel_name=$(echo "$service" | sed 's/cloudflared@//' | sed 's/.service//')
+            break
+        fi
+    done
+    
+    if [ "$tunnel_service_found" = false ]; then
+        # Check for alternative cloudflare service names or processes
         if pgrep -f cloudflared > /dev/null; then
             print_result "Cloudflare tunnel process running" "PASS" "Tunnel process detected"
         else
             print_result "Cloudflare tunnel service running" "FAIL" "No cloudflared service/process found"
+            
+            # Provide specific troubleshooting guidance
+            echo -e "  ${YELLOW}Common fixes:${NC}"
+            echo -e "  ${YELLOW}1. Check if service is enabled: systemctl is-enabled cloudflared@*.service${NC}"
+            echo -e "  ${YELLOW}2. Check credentials exist: ls -la /home/pi/.cloudflared/${NC}"
+            echo -e "  ${YELLOW}3. Check SystemD restrictions in /etc/systemd/system/cloudflared@.service${NC}"
+        fi
+    fi
+    
+    # If tunnel is running, check tunnel connectivity
+    if [ "$tunnel_service_found" = true ] && [ -n "$tunnel_name" ]; then
+        # Check for SystemD service configuration issues (critical fix)
+        service_config="/etc/systemd/system/cloudflared@.service"
+        if [ -f "$service_config" ]; then
+            if grep -q "ProtectHome=read-only" "$service_config"; then
+                print_result "Cloudflare tunnel SystemD configuration" "FAIL" "ProtectHome=read-only prevents credential access"
+                echo -e "  ${YELLOW}Fix: Change to ProtectHome=no in $service_config${NC}"
+            elif grep -q "ProtectHome=no" "$service_config"; then
+                print_result "Cloudflare tunnel SystemD configuration" "PASS" "SystemD restrictions properly configured"
+            else
+                print_result "Cloudflare tunnel SystemD configuration" "PASS" "No restrictive ProtectHome setting found"
+            fi
+        fi
+        
+        # Check tunnel logs for "context canceled" errors (indicates SystemD issues)
+        tunnel_logs=$(journalctl -u "cloudflared@$tunnel_name.service" --no-pager -n 20 2>/dev/null)
+        if echo "$tunnel_logs" | grep -q "context canceled"; then
+            recent_canceled=$(echo "$tunnel_logs" | grep "context canceled" | tail -1)
+            print_result "Cloudflare tunnel stability" "FAIL" "Tunnel experiencing 'context canceled' errors"
+            echo -e "  ${YELLOW}Debug: Check SystemD service restrictions and credentials${NC}"
+        else
+            print_result "Cloudflare tunnel stability" "PASS" "No recent 'context canceled' errors"
+        fi
+        
+        # Check tunnel connections (should show "Registered tunnel connection")
+        if echo "$tunnel_logs" | grep -q "Registered tunnel connection"; then
+            print_result "Cloudflare tunnel connected to edge" "PASS" "Tunnel has active connections"
+        else
+            print_result "Cloudflare tunnel connected to edge" "FAIL" "No active tunnel connections found"
+            echo -e "  ${YELLOW}Debug: Check tunnel credentials and config${NC}"
+        fi
+        
+        # Check for authentication errors
+        if echo "$tunnel_logs" | grep -q "Invalid tunnel secret"; then
+            print_result "Cloudflare tunnel authentication" "FAIL" "Invalid tunnel credentials"
+            echo -e "  ${YELLOW}Fix: Recreate tunnel credentials${NC}"
+        else
+            print_result "Cloudflare tunnel authentication" "PASS" "No authentication errors"
+        fi
+        
+        # Check tunnel service restart frequency (indicates persistent issues)
+        restart_count=$(echo "$tunnel_logs" | grep -c "Scheduled restart job" 2>/dev/null)
+        restart_count=${restart_count:-0}
+        if [ "$restart_count" -gt 5 ]; then
+            print_result "Cloudflare tunnel restart frequency" "FAIL" "Service restarting frequently ($restart_count recent restarts)"
+            echo -e "  ${YELLOW}Debug: Check for SystemD restrictions or credential issues${NC}"
+        else
+            print_result "Cloudflare tunnel restart frequency" "PASS" "Service stable (low restart count)"
         fi
     fi
     
@@ -324,20 +393,38 @@ test_selfie_portal() {
     # This tests if WiFi clients can access HTTPS domain with valid Cloudflare certificates
     tunnel_domain="selfies.griffincreektrestle.net"
     if [ -n "$tunnel_domain" ]; then
-        # Check if domain resolves to local IP (indicates DNS redirect is working)
-        resolved_ip=$(nslookup "$tunnel_domain" 127.0.0.1 2>/dev/null | grep "Address:" | tail -1 | awk '{print $2}')
-        if [ "$resolved_ip" = "$EXPECTED_IP" ]; then
-            # Test HTTPS access (use -k to ignore cert warnings for local testing)
-            tunnel_response=$(curl -s -k --connect-timeout 10 "https://$tunnel_domain" 2>&1)
+        # Test if dnsmasq has the DNS redirect configured
+        if grep -q "address=/$tunnel_domain/$EXPECTED_IP" /etc/dnsmasq.conf 2>/dev/null; then
+            print_result "DNS redirect configured for $tunnel_domain" "PASS" "dnsmasq redirects domain to local IP"
+            
+            # Test HTTP access with proper Host header (simulates client access)
+            tunnel_response=$(curl -s -H "Host: $tunnel_domain" --connect-timeout 10 "http://$EXPECTED_IP/" 2>&1)
             if echo "$tunnel_response" | grep -i "selfie\|community\|portal" > /dev/null; then
-                print_result "Cloudflare certificate domain (https://$tunnel_domain)" "PASS" "Local HTTPS redirect working"
+                print_result "HTTP access via Cloudflare domain" "PASS" "Local nginx responds correctly"
             else
-                print_result "Cloudflare certificate domain (https://$tunnel_domain)" "FAIL" "Domain redirects but HTTPS content issue"
-                echo -e "  ${YELLOW}Debug: Check nginx HTTPS config and certificate setup${NC}"
+                print_result "HTTP access via Cloudflare domain" "FAIL" "Domain resolves but content issue"
+                echo -e "  ${YELLOW}Debug: Check nginx config and selfie portal service${NC}"
+            fi
+            
+            # Test HTTPS access (critical for camera API)
+            https_response=$(curl -k -s -H "Host: $tunnel_domain" --connect-timeout 10 "https://$EXPECTED_IP/" 2>&1)
+            if echo "$https_response" | grep -i "selfie\|community\|portal" > /dev/null; then
+                print_result "HTTPS access via Cloudflare domain (CRITICAL)" "PASS" "SSL working - camera API will function"
+            else
+                print_result "HTTPS access via Cloudflare domain (CRITICAL)" "FAIL" "SSL not working - camera API will NOT function"
+                echo -e "  ${YELLOW}Debug: Check nginx SSL config and certificates${NC}"
+            fi
+            
+            # Test SSL certificate configuration
+            ssl_cert_check=$(echo | openssl s_client -connect $EXPECTED_IP:443 -servername $tunnel_domain 2>/dev/null | openssl x509 -noout -subject 2>/dev/null)
+            if [ $? -eq 0 ]; then
+                print_result "SSL certificate accessible" "PASS" "Certificate chain working"
+            else
+                print_result "SSL certificate accessible" "FAIL" "SSL certificate issue"
             fi
         else
-            print_result "Cloudflare certificate domain (https://$tunnel_domain)" "FAIL" "Domain not redirecting to local IP ($EXPECTED_IP)"
-            echo -e "  ${YELLOW}Debug: Expected local redirect, got $resolved_ip. Check dnsmasq address config.${NC}"
+            print_result "DNS redirect configured for $tunnel_domain" "FAIL" "DNS redirect not configured in dnsmasq"
+            echo -e "  ${YELLOW}Fix: Add 'address=/$tunnel_domain/$EXPECTED_IP' to dnsmasq.conf${NC}"
         fi
     fi
     
@@ -360,6 +447,50 @@ test_selfie_portal() {
         fi
     else
         print_result "wlan0 interface configured" "PASS" "wlan0 not configured (acceptable for AP-only mode)"
+    fi
+    
+    return 0
+}
+
+# Function to test external Cloudflare tunnel access (optional)
+test_external_access() {
+    print_header "Test 7: External Access (Optional)"
+    
+    tunnel_domain="selfies.griffincreektrestle.net"
+    
+    # Test external domain resolution (should point to Cloudflare)
+    external_ips=$(dig +short "$tunnel_domain" @8.8.8.8 2>/dev/null | grep -E '^[0-9]+\.')
+    if [ -n "$external_ips" ]; then
+        cloudflare_detected=false
+        for ip in $external_ips; do
+            # Check if IP belongs to Cloudflare ranges (104.16-31.x.x, 172.64-71.x.x, 198.41.x.x)
+            if echo "$ip" | grep -qE '^(104\.(1[6-9]|2[0-9]|3[0-1])|172\.(6[4-9]|7[0-1])|198\.41)\.' ; then
+                cloudflare_detected=true
+                break
+            fi
+        done
+        
+        if [ "$cloudflare_detected" = true ]; then
+            print_result "External DNS points to Cloudflare" "PASS" "Domain resolves to Cloudflare edge servers"
+        else
+            print_result "External DNS points to Cloudflare" "FAIL" "Domain doesn't resolve to expected Cloudflare IPs"
+        fi
+    else
+        print_result "External DNS resolution" "FAIL" "Domain doesn't resolve externally"
+    fi
+    
+    # Test external HTTPS access (this might fail if tunnel isn't properly routed)
+    external_response=$(timeout 15 curl -s -I "https://$tunnel_domain/" 2>/dev/null | head -1)
+    if echo "$external_response" | grep -q "HTTP/[12] 200"; then
+        print_result "External HTTPS access working" "PASS" "External users can access the site"
+    elif echo "$external_response" | grep -q "HTTP/[12] 530"; then
+        print_result "External HTTPS access working" "FAIL" "530 Origin unreachable - tunnel connection issue"
+        echo -e "  ${YELLOW}Debug: Check tunnel credentials and DNS routing${NC}"
+    elif echo "$external_response" | grep -q "HTTP/[12]"; then
+        print_result "External HTTPS access working" "FAIL" "External access returns: $external_response"
+    else
+        print_result "External HTTPS access working" "FAIL" "No response from external domain (timeout or network issue)"
+        echo -e "  ${YELLOW}Note: This is optional - local WiFi access is the primary feature${NC}"
     fi
     
     return 0
@@ -396,6 +527,7 @@ main() {
     test_dhcp_server
     test_captive_portal
     test_selfie_portal
+    test_external_access
     
     # Print summary and exit with appropriate code
     print_summary

@@ -1,6 +1,7 @@
 tunnel: {{ cloudflare_tunnel.name }}
 credentials-file: /home/{{ cloudflare_tunnel.user }}/.cloudflared/{{ cloudflare_tunnel.name }}.json
 origincert: /home/{{ cloudflare_tunnel.user }}/.cloudflared/cert.pem
+protocol: http2
 
 ingress:
   - hostname: {{ cloudflare_tunnel.domain }}

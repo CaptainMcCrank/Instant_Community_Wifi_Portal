@@ -41,8 +41,16 @@
   synchronize:
     src: "{{ root_playbook_dir }}/var/www/ansibledest.local/apps/selfies/templates/"
     dest: "{{ selfie_app.app_root }}/{{ selfie_app.templates_dir }}/"
+  tags:
+    - selfie_app
+    - install
+
+- name: Fix templates directory permissions
+  file:
+    path: "{{ selfie_app.app_root }}/{{ selfie_app.templates_dir }}"
     owner: "{{ selfie_app.app_user }}"
     group: "{{ selfie_app.app_group }}"
+    recurse: yes
   tags:
     - selfie_app
     - install
@@ -51,8 +59,16 @@
   synchronize:
     src: "{{ root_playbook_dir }}/var/www/ansibledest.local/apps/selfies/static/"
     dest: "{{ selfie_app.app_root }}/{{ selfie_app.static_dir }}/"
+  tags:
+    - selfie_app
+    - install
+
+- name: Fix static files directory permissions
+  file:
+    path: "{{ selfie_app.app_root }}/{{ selfie_app.static_dir }}"
     owner: "{{ selfie_app.app_user }}"
     group: "{{ selfie_app.app_group }}"
+    recurse: yes
   tags:
     - selfie_app
     - install

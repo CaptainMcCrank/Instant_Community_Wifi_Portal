@@ -3,4 +3,25 @@
   systemd:
     name: "{{ cloudflare_tunnel.service_name }}"
     state: restarted
-    daemon_reload: yes 
+    daemon_reload: yes
+  register: restart_result
+  tags: [cloudflare]
+
+- name: verify cloudflared service status
+  systemd:
+    name: "{{ cloudflare_tunnel.service_name }}"
+  register: service_verification
+  when: restart_result is changed
+  tags: [cloudflare]
+
+- name: display service verification result
+  debug:
+    msg: |
+      Service {{ cloudflare_tunnel.service_name }} status: {{ service_verification.status.ActiveState }}
+      {% if service_verification.status.ActiveState == 'active' %}
+      ✓ Service restarted successfully
+      {% else %}
+      ⚠ Service may have issues - check logs with: journalctl -u {{ cloudflare_tunnel.service_name }} --no-pager -n 20
+      {% endif %}
+  when: restart_result is changed
+  tags: [cloudflare]

@@ -5,14 +5,50 @@
        state: present
        update_cache: true
 
-   - name: Copy /etc/dnsmasq.conf configuration that is used for DHCP assignment
-     copy:
-       src: "{{ root_playbook_dir }}/etc/IIABdnsmasq.conf"
+# This kept orphaning me.  7/24/25
+#   - name: Stop any existing DNS services that might conflict
+#     systemd:
+#       name: "{{ item }}"
+#       state: stopped
+#       enabled: false
+#     loop:
+#       - systemd-resolved
+#       - resolvconf
+#       - NetworkManager
+#     ignore_errors: true
+
+#   - name: Wait for services to stop
+#     pause:
+#       seconds: 2
+
+   - name: Check what's using port 53
+     command: netstat -tlnp | grep :53
+     register: port_53_check
+     changed_when: false
+     ignore_errors: true
+
+   - name: Display port 53 usage
+     debug:
+       var: port_53_check.stdout_lines
+
+   - name: Create dnsmasq log directory with proper permissions
+     file:
+       path: /tmp/dnsmasq
+       state: directory
+       owner: dnsmasq
+       group: nogroup
+       mode: '0755'
+
+   - name: Generate dnsmasq configuration using template with project variables
+     template:
+       src: "{{ root_playbook_dir }}/templates/dnsmasq.conf.j2"
        dest: /etc/dnsmasq.conf
        owner: root
        group: root
-       mode: 0744
+       mode: '0644'
+       backup: yes
      tags: os_config_files
+     notify: restart dnsmasq
 
    - name: Create dnsmasq systemd override directory
      file:
@@ -31,6 +67,9 @@
          Wants=network-online.target
          
          [Service]
+         ExecStartPre=/bin/mkdir -p /tmp/dnsmasq
+         ExecStartPre=/bin/chown dnsmasq:nogroup /tmp/dnsmasq
+         ExecStartPre=/bin/chmod 755 /tmp/dnsmasq
          ExecStartPre=/bin/sleep 5
        owner: root
        group: root
@@ -41,9 +80,72 @@
      tags: 
      - Hotspot
 
+   - name: Restart NetworkManager after dnsmasq is configured
+     systemd:
+       name: NetworkManager
+       state: restarted
+     tags:
+     - Hotspot
+
    - name: start dnsmasq
      command: systemctl start dnsmasq
+     register: dnsmasq_start_result
      tags: 
      - Hotspot
+     ignore_errors: true
+
+   - name: Check dnsmasq status if start failed
+     command: systemctl status dnsmasq
+     register: dnsmasq_status
+     when: dnsmasq_start_result.rc != 0
+     changed_when: false
+     ignore_errors: true
+
+   - name: Display dnsmasq status if start failed
+     debug:
+       var: dnsmasq_status.stdout_lines
+     when: dnsmasq_start_result.rc != 0 and dnsmasq_status is defined
+
+   - name: Try to kill any process using port 53 and restart dnsmasq
+     block:
+       - name: Check what's using port 53
+         command: lsof -i :53
+         register: port_53_processes
+         changed_when: false
+         ignore_errors: true
+       
+       - name: Display what's using port 53
+         debug:
+           var: port_53_processes.stdout_lines
+         when: port_53_processes is defined
+       
+       # NetworkManager is now configured to not use dnsmasq, so we don't need to stop it
+       
+       - name: Kill processes using port 53
+         command: fuser -k 53/tcp
+         ignore_errors: true
+       
+       - name: Wait a moment
+         pause:
+           seconds: 3
+       
+       - name: Try starting dnsmasq again
+         command: systemctl start dnsmasq
+         register: dnsmasq_restart_result
+         ignore_errors: true
+       
+       - name: Check final dnsmasq status
+         command: systemctl status dnsmasq
+         register: dnsmasq_final_status
+         changed_when: false
+         ignore_errors: true
+       
+       - name: Display final dnsmasq status
+         debug:
+           var: dnsmasq_final_status.stdout_lines
+         when: dnsmasq_final_status is defined
+       
+       # NetworkManager is now configured to not use dnsmasq, so we don't need to restart it
+     when: dnsmasq_start_result.rc != 0
 
      

@@ -1,0 +1,94 @@
+---
+# Nodogsplash + Selfie Portal Integration
+# This task file integrates the selfie portal with the captive portal experience
+
+- name: Copy integrated selfie portal splash page
+  copy:
+    src: "{{ playbook_dir }}/etc/nodogsplash/htdocs/splash-with-selfie-portal.html"
+    dest: /etc/nodogsplash/htdocs/splash-with-selfie-portal.html
+    owner: root
+    group: root
+    mode: '0644'
+    backup: yes
+  notify: restart nodogsplash
+  tags:
+    - nodogsplash
+    - selfie_integration
+
+- name: Update nodogsplash configuration to use integrated splash page
+  replace:
+    path: /etc/nodogsplash/nodogsplash.conf
+    regexp: '^#?\s*SplashPage\s+.*$'
+    replace: 'SplashPage splash-with-selfie-portal.html'
+  notify: restart nodogsplash
+  tags:
+    - nodogsplash
+    - selfie_integration
+
+- name: Configure nodogsplash to redirect to selfie portal after authentication
+  replace:
+    path: /etc/nodogsplash/nodogsplash.conf
+    regexp: '^RedirectURL\s+.*$'
+    replace: 'RedirectURL https://selfies.griffincreektrestle.net/'
+  notify: restart nodogsplash
+  tags:
+    - nodogsplash
+    - selfie_integration
+
+- name: Ensure nodogsplash allows HTTPS traffic for selfie portal
+  blockinfile:
+    path: /etc/nodogsplash/nodogsplash.conf
+    insertafter: '# FirewallRule allow tcp port 443'
+    block: |
+      # Allow HTTPS for selfie portal access
+      FirewallRule allow tcp port 443
+    marker: "# {mark} ANSIBLE MANAGED BLOCK - Selfie Portal HTTPS"
+  notify: restart nodogsplash
+  tags:
+    - nodogsplash
+    - selfie_integration
+
+- name: Verify nodogsplash service is enabled
+  systemd:
+    name: nodogsplash
+    enabled: yes
+  tags:
+    - nodogsplash
+    - selfie_integration
+
+- name: Check if nodogsplash is running
+  systemd:
+    name: nodogsplash
+  register: nodogsplash_status
+  tags:
+    - nodogsplash
+    - selfie_integration
+
+- name: Display nodogsplash integration status
+  debug:
+    msg: |
+      ========================================
+      NODOGSPLASH + SELFIE PORTAL INTEGRATION
+      ========================================
+      
+      ✓ Integrated splash page: splash-with-selfie-portal.html
+      ✓ Redirect URL: https://selfies.griffincreektrestle.net/
+      ✓ HTTPS access configured for camera API
+      ✓ Service status: {{ nodogsplash_status.status.ActiveState }}
+      
+      🎯 User Experience Flow:
+      1. Connect to "JoinMe" WiFi
+      2. Browser opens → Captive portal with selfie preview
+      3. Click "Connect & Start Sharing"
+      4. Automatically redirected to HTTPS selfie portal
+      5. Camera access works immediately
+      
+      🔧 Manual Testing:
+      - Connect to JoinMe WiFi
+      - Open any website in browser
+      - Should see integrated splash page
+      - After authentication: https://selfies.griffincreektrestle.net/
+      
+  tags:
+    - nodogsplash
+    - selfie_integration

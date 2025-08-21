@@ -1,0 +1,53 @@
+- Fix broken packages before installing driver prerequisites
+- Check available kernel headers packages
+- Display available kernel headers
+- Install driver prerequisites
+- Install kernel headers if available
+- wget rpi-source
+- Change ownership of rpi-source
+- update rpi-source
+- launch the reboot
+- Wait for server to restart
+- Run apt-get update
+- enable kernel headers
+- Find Linux directory
+- Debug linux_dir variable
+- Run make commands in Linux directory
+- Clone of 8812au-20210820.git drivers
+- Set correct permissions on driver directory
+- Change CONFIG_PLATFORM_I386_PC from y to n
+- Change CONFIG_PLATFORM_ARM_RPI from n to y
+- Check kernel headers installation
+- Display kernel headers check result
+- Check current kernel version
+- Display kernel version
+- Fix kernel headers symlink
+- Display symlink fix result
+- Verify kernel headers symlink
+- Display kernel headers check after fix
+- Check if 8812au.ko exists before make
+- Display ko file check before make
+- Run make clean first
+- Check kernel module build tools
+- Display build tools check
+- Create module.lds fix script
+- Fix missing module.lds file
+- Display module.lds fix result
+- Run make commands in driver directory
+- Display make result
+- Check if 8812au.ko exists after make
+- Display ko file check after make
+- Check if compilation failed and try alternative approach
+- Check kernel source compatibility
+- Display kernel compatibility check
+- Try building with explicit kernel path
+- Try building with explicit module target
+- Display modules make result
+- Display alternative make result
+- Check if 8812au.ko exists after alternative make
+- Display alternative ko file check
+- Install the compiled driver
+- Remove existing driver installation if present
+- Display remove driver result
+- Run install-driver.sh with automatic responses to prompts
+- Restart NetworkManager

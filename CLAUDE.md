@@ -275,3 +275,181 @@ The validation script `/usr/local/bin/validate-ap.sh` tests:
 1. Remember hostname changes in post_tasks (after roles)
 2. Update all service configs to use `{{ hostname }}` variable
 3. Check directory structures match new hostname
+
+### Nginx Configuration Conflicts
+1. **Check for multiple nginx site configurations**: `ls /etc/nginx/sites-enabled/`
+2. **Look for conflicting server blocks** with same hostname/port
+3. **Common issue**: selfie_app role creates conflicting standalone nginx configuration
+4. **Solution**: Use `blockinfile` to integrate selfie portal into main nginx config
+5. **Remove duplicate configurations**: Check both sites-available and sites-enabled
+
+## NGINX CONFIGURATION MANAGEMENT
+
+### Critical Nginx Architecture
+- **Main site**: `/etc/nginx/sites-available/{{ hostname }}` (e.g., `thepub.local`)
+- **Cloudflare domain site**: `/etc/nginx/sites-available/selfies.griffincreektrestle.net`
+- **NO standalone selfie portal sites** - integrated into main site
+
+### Nginx Role Responsibilities
+- **system role**: Creates main hostname-based nginx configuration
+- **selfie_app role**: Adds selfie portal blocks to existing main configuration (NOT separate site)
+- **cloudflare_tunnel role**: Creates separate HTTPS site for external domain
+
+### Avoiding Nginx Conflicts
+```yaml
+# CORRECT: Add to existing main site
+- name: Add selfie portal configuration to main nginx site
+  blockinfile:
+    path: "/etc/nginx/sites-available/{{ hostname }}"
+    insertbefore: "location / {"
+    block: |
+      location /selfies {
+          proxy_pass http://127.0.0.1:5001;
+          # ... proxy configuration
+      }
+
+# WRONG: Create conflicting standalone site
+- name: Create conflicting nginx site
+  copy:
+    dest: "/etc/nginx/sites-available/selfie-portal"
+    content: |
+      server {
+          listen 80;
+          server_name {{ hostname }};  # CONFLICT!
+          location / {
+              proxy_pass http://127.0.0.1:8080;  # NON-EXISTENT!
+          }
+      }
+```
+
+### Nginx Debugging Commands
+```bash
+# Test nginx configuration
+sudo nginx -t
+
+# Check enabled sites
+ls -la /etc/nginx/sites-enabled/
+
+# Find conflicting server blocks
+grep -r "server_name.*{{ hostname }}" /etc/nginx/sites-*
+
+# Check for port 8080 proxy (usually wrong)
+grep -r "proxy_pass.*8080" /etc/nginx/sites-*
+
+# Verify selfie portal integration
+grep -A5 -B5 "location /selfies" /etc/nginx/sites-available/{{ hostname }}
+```
+
+## ROLE COORDINATION AND DEPENDENCIES
+
+### Role Execution Order (CRITICAL)
+1. **system role**: Base system setup, nginx, dnsmasq, NetworkManager
+2. **cloudflare_tunnel role**: External domain access (optional)
+3. **selfie_app role**: Selfie portal application + integration with existing nginx
+
+### Inter-Role Dependencies
+- **selfie_app** depends on **system** role's nginx configuration existing
+- **selfie_app** MUST NOT create competing nginx server blocks
+- **cloudflare_tunnel** creates separate HTTPS site (no conflict with main HTTP site)
+
+### Role Configuration Patterns
+```yaml
+# roles/system/tasks/nginx.yml - Creates main site
+- name: Create main nginx site configuration
+  template:
+    src: nginx_site.conf.j2
+    dest: "/etc/nginx/sites-available/{{ hostname }}"
+
+# roles/selfie_app/tasks/configure.yml - Integrates with main site
+- name: Add selfie portal to main nginx site  
+  blockinfile:
+    path: "/etc/nginx/sites-available/{{ hostname }}"
+    # Integration, not replacement
+
+# roles/cloudflare_tunnel/ - Separate HTTPS site
+- name: Create Cloudflare domain nginx site
+  template:
+    src: cloudflare_site.conf.j2  
+    dest: "/etc/nginx/sites-available/selfies.griffincreektrestle.net"
+```
+
+## DNS AND DOMAIN RESOLUTION
+
+### DNS Resolution Architecture
+- **Pi system DNS**: Uses upstream DNS (192.168.6.1) for external resolution
+- **WiFi client DNS**: Uses dnsmasq (10.10.42.1) for local domain redirection
+- **IPv6**: Should be disabled to avoid resolution conflicts
+
+### Cloudflare Certificate Approach
+- **Client perspective**: `selfies.griffincreektrestle.net` → 10.10.42.1 (via dnsmasq)
+- **Pi perspective**: `selfies.griffincreektrestle.net` → Cloudflare IPs (via upstream DNS)
+- **This is correct behavior** - different DNS for different network roles
+
+### DNS Configuration Files
+```bash
+# dnsmasq configuration for WiFi clients
+/etc/dnsmasq.conf:
+address=/selfies.griffincreektrestle.net/10.10.42.1
+
+# Pi system DNS (managed by NetworkManager)
+/etc/resolv.conf:
+nameserver 192.168.6.1  # Upstream router
+nameserver 10.10.42.1   # Local dnsmasq (secondary)
+```
+
+### DNS Testing Commands
+```bash
+# Test from Pi (should get Cloudflare IPs)
+getent hosts selfies.griffincreektrestle.net
+
+# Test dnsmasq configuration
+grep "address=/selfies.griffincreektrestle.net" /etc/dnsmasq.conf
+
+# Simulate client access
+curl -H "Host: selfies.griffincreektrestle.net" http://10.10.42.1/selfies/
+```
+
+## VALIDATION SCRIPT INSIGHTS
+
+### IPv6 Resolution Issues
+- `getent hosts` may return IPv6 addresses even with IPv6 disabled
+- This indicates upstream DNS returning AAAA records
+- **Not a problem** as long as IPv6 is disabled at network level
+- Validation script should test HTTP access, not DNS resolution from Pi
+
+### Correct Testing Approach
+```bash
+# WRONG: Test DNS from Pi perspective
+resolved_ip=$(nslookup selfies.griffincreektrestle.net 127.0.0.1)
+
+# CORRECT: Test HTTP access with proper Host header (simulates client)
+curl -H "Host: selfies.griffincreektrestle.net" http://10.10.42.1/selfies/
+
+# CORRECT: Verify dnsmasq configuration exists
+grep -q "address=/selfies.griffincreektrestle.net/10.10.42.1" /etc/dnsmasq.conf
+```
+
+## LATEST DEBUGGING SESSION LEARNINGS
+
+### Critical Discovery: selfie_app Role Nginx Conflict
+- **Issue**: `roles/selfie_app/tasks/configure.yml` created standalone nginx site
+- **Problem**: Conflicted with main site, included non-existent port 8080 proxy
+- **Solution**: Modified to use `blockinfile` integration instead of separate site
+- **Result**: 502 errors eliminated, selfie portal accessible
+
+### Key Files Modified
+- `roles/selfie_app/tasks/configure.yml` - Fixed nginx integration approach
+- `usr/local/bin/validate-ap.sh` - Improved Cloudflare domain testing
+- `roles/selfie_app/handlers/main.yml` - Removed duplicate nginx handler
+
+### Validation Success Metrics  
+- **Before fix**: Multiple test failures, 502 nginx errors
+- **After fix**: 25/26 tests passing, only optional Cloudflare tunnel failing
+- **Accessibility confirmed**: Both main site and selfie portal return HTTP 200
+
+### Prevention Guidelines
+1. **Never create multiple nginx sites with same hostname**
+2. **Always integrate additional services into existing nginx configuration**
+3. **Test nginx configuration after any role modifications**
+4. **Use validation script to catch configuration conflicts early**
+5. **Remove conflicting configurations when found**

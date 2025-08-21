@@ -26,3 +26,9 @@
        name: avahi-daemon
        state: restarted
        enabled: yes
+
+   - name: restart nodogsplash
+     systemd:
+       name: nodogsplash
+       state: restarted
+       enabled: yes

@@ -18,7 +18,7 @@ SyslogIdentifier=cloudflared-%i
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
-ProtectHome=true
+ProtectHome=no
 ReadWritePaths={{ cloudflare_tunnel.config_dir }} /home/{{ cloudflare_tunnel.user }}/.cloudflared
 
 [Install]

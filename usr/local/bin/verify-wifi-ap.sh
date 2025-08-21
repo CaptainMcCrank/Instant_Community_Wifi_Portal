@@ -44,7 +44,7 @@ if ip link show wlan1 >/dev/null 2>&1; then
         echo "   ✗ wlan1 has no IP address"
     fi
 else
-    echo "   ✗ wlan1 interface not found"
+    echo "   ✗ wlan1 interface not found (may appear after reboot with external adapter)"
 fi
 
 # Check if dnsmasq is running
@@ -65,10 +65,14 @@ fi
 
 # Check if WiFi is broadcasting
 echo "7. Checking WiFi broadcast..."
-if iw dev wlan1 info | grep -q "type AP"; then
-    echo "   ✓ wlan1 is in AP mode"
+if ip link show wlan1 >/dev/null 2>&1; then
+    if iw dev wlan1 info | grep -q "type AP"; then
+        echo "   ✓ wlan1 is in AP mode"
+    else
+        echo "   ✗ wlan1 is not in AP mode"
+    fi
 else
-    echo "   ✗ wlan1 is not in AP mode"
+    echo "   ✗ wlan1 interface not found (may appear after reboot with external adapter)"
 fi
 
 echo ""
@@ -77,6 +81,8 @@ echo "If all checks passed, your WiFi AP should be working."
 echo "SSID: JoinMe"
 echo "IP Range: 10.10.42.34-10.10.42.253"
 echo "Gateway: 10.10.42.1"
+echo ""
+echo "Note: If wlan1 is not found, it may appear after reboot when the external WiFi adapter is properly initialized."
 echo ""
 echo "To test:"
 echo "1. Look for 'JoinMe' network on your device"

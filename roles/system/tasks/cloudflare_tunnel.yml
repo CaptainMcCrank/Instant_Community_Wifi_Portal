@@ -1,4 +1,0 @@
----
-- name: Include cloudflare_tunnel role
-  include_role:
-    name: cloudflare_tunnel 

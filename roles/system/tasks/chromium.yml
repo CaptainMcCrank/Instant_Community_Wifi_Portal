@@ -38,7 +38,6 @@
        regexp: "{{ item }}"
        replace: "{{ hostname }}"
      loop:
-       - '33.33.33.33'
-       - 'na-internet-in-a-box.itm'
+       - "{{ wifi_ip }}"
        - 'localhost'
 

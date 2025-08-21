@@ -38,70 +38,51 @@
     - selfie_app
     - configure
 
-- name: Configure nginx for selfie app
-  copy:
-    dest: "/etc/nginx/sites-available/{{ selfie_app.nginx_site_name }}"
-    content: |
-      server {
-          listen 80;
-          server_name {{ hostname }};
+- name: Add selfie portal configuration to main nginx site
+  blockinfile:
+    path: "/etc/nginx/sites-available/{{ hostname }}"
+    insertbefore: "location / {"
+    block: |
+      # Selfie portal location
+      location {{ selfie_app.nginx_proxy_path }} {
+          proxy_pass http://127.0.0.1:{{ selfie_app.app_port }};
+          proxy_set_header Host $host;
+          proxy_set_header X-Real-IP $remote_addr;
+          proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+          proxy_set_header X-Forwarded-Proto $scheme;
           
-          # Selfie portal location
-          location {{ selfie_app.nginx_proxy_path }} {
-              proxy_pass http://127.0.0.1:{{ selfie_app.app_port }};
-              proxy_set_header Host $host;
-              proxy_set_header X-Real-IP $remote_addr;
-              proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-              proxy_set_header X-Forwarded-Proto $scheme;
-              
-              # Handle large file uploads
-              client_max_body_size {{ selfie_app.max_file_size }};
-              proxy_read_timeout 300s;
-              proxy_connect_timeout 75s;
-          }
-          
-          # Serve uploaded images directly
-          location {{ selfie_app.nginx_proxy_path }}/data/uploads/ {
-              alias {{ selfie_app.app_root }}/{{ selfie_app.upload_dir }}/;
-              expires 1d;
-              add_header Cache-Control "public, immutable";
-          }
-          
-          # Main community site (existing configuration)
-          location / {
-              proxy_pass http://127.0.0.1:8080;
-              proxy_set_header Host $host;
-              proxy_set_header X-Real-IP $remote_addr;
-              proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-              proxy_set_header X-Forwarded-Proto $scheme;
-          }
+          # Handle large file uploads
+          client_max_body_size {{ selfie_app.max_file_size }};
+          proxy_read_timeout 300s;
+          proxy_connect_timeout 75s;
       }
-    owner: root
-    group: root
-    mode: '0644'
+      
+      # Serve uploaded images directly
+      location {{ selfie_app.nginx_proxy_path }}/data/uploads/ {
+          alias {{ selfie_app.app_root }}/{{ selfie_app.upload_dir }}/;
+          expires 1d;
+          add_header Cache-Control "public, immutable";
+      }
+    marker: "# {mark} ANSIBLE MANAGED BLOCK - Selfie Portal"
+  notify: reload nginx
   tags:
     - selfie_app
     - configure
 
-- name: Enable selfie app nginx site
+- name: Remove conflicting standalone selfie nginx site if exists
   file:
-    src: "/etc/nginx/sites-available/{{ selfie_app.nginx_site_name }}"
-    dest: "/etc/nginx/sites-enabled/{{ selfie_app.nginx_site_name }}"
-    state: link
+    path: "/etc/nginx/sites-enabled/{{ selfie_app.nginx_site_name }}"
+    state: absent
+  notify: reload nginx
   tags:
     - selfie_app
     - configure
 
-- name: Test nginx configuration
-  command: nginx -t
-  tags:
-    - selfie_app
-    - configure
-
-- name: Reload nginx
-  systemd:
-    name: nginx
-    state: reloaded
+- name: Remove conflicting standalone selfie nginx site config if exists
+  file:
+    path: "/etc/nginx/sites-available/{{ selfie_app.nginx_site_name }}"
+    state: absent
+  notify: reload nginx
   tags:
     - selfie_app
     - configure

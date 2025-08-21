@@ -1,4 +1,19 @@
 ---
+- name: Ensure remote_credentials_check is properly defined (compatibility fix)
+  set_fact:
+    remote_credentials_check:
+      stat:
+        exists: false
+  when: remote_credentials_check is not defined or remote_credentials_check.stat is not defined
+  tags: [cloudflare_auth, always, cloudflare]
+
+- name: Reset cloudflare authentication (if requested)
+  file:
+    path: "/home/{{ cloudflare_tunnel.user }}/.cloudflared/cert.pem"
+    state: absent
+  when: cloudflare_tunnel_reset_auth | default(false)
+  tags: [cloudflare_auth, reset, cloudflare]
+
 - name: Create cloudflared configuration directory
   file:
     path: "{{ cloudflare_tunnel.config_dir }}"
@@ -6,6 +21,8 @@
     owner: "{{ cloudflare_tunnel.user }}"
     group: "{{ cloudflare_tunnel.group }}"
     mode: '0755'
+  tags: [cloudflare]
+
 
 - name: Create cloudflared credentials directory
   file:
@@ -15,6 +32,12 @@
     group: "{{ cloudflare_tunnel.group }}"
     mode: '0700'
 
+- name: Check if credentials file exists on remote machine
+  stat:
+    path: "{{ cloudflare_tunnel.credentials_file }}"
+  register: remote_credentials_check
+  tags: [cloudflare_auth, cloudflare]
+
 - name: Download cloudflared binary
   get_url:
     url: "{{ cloudflare_tunnel.binary_url }}"
@@ -23,15 +46,889 @@
     owner: root
     group: root
   register: cloudflared_download
+  tags: [cloudflare]
 
-- name: Copy tunnel credentials file
+- name: Copy create-cloudflare-tunnel.sh script to pi home directory
+  copy:
+    src: "{{ playbook_dir }}/bin/create-cloudflare-tunnel.sh"
+    dest: "/home/{{ cloudflare_tunnel.user }}/create-cloudflare-tunnel.sh"
+    owner: "{{ cloudflare_tunnel.user }}"
+    group: "{{ cloudflare_tunnel.group }}"
+    mode: '0755'
+  when: 
+    
+    - not remote_credentials_check.stat.exists
+  tags: [cloudflare]
+
+- name: Check if cloudflared origin certificate exists
+  stat:
+    path: "/home/{{ cloudflare_tunnel.user }}/.cloudflared/cert.pem"
+  register: origin_cert_check
+  tags: [cloudflare_auth, always, cloudflare]
+
+# Clean up any existing tunnel with the target name to ensure fresh start
+- name: Check if target tunnel already exists
+  shell: "{{ cloudflare_tunnel.binary_path }} tunnel list | grep '{{ cloudflare_tunnel.name }}' || true"
+  register: existing_tunnel_check
+  changed_when: false
+  failed_when: false
+  become_user: "{{ cloudflare_tunnel.user }}"
+  when: origin_cert_check.stat.exists
+  tags: [cloudflare_cleanup, cloudflare]
+
+- name: Delete existing tunnel if it exists
+  shell: "{{ cloudflare_tunnel.binary_path }} tunnel delete {{ cloudflare_tunnel.name }}"
+  register: tunnel_deletion
+  changed_when: tunnel_deletion.rc == 0
+  failed_when: false  # Don't fail if tunnel doesn't exist
+  become_user: "{{ cloudflare_tunnel.user }}"
+  when: 
+    - origin_cert_check.stat.exists
+    - existing_tunnel_check.stdout | length > 0
+    - "'{{ cloudflare_tunnel.name }}' in existing_tunnel_check.stdout"
+  tags: [cloudflare_cleanup, cloudflare]
+
+- name: Stop and disable old tunnel services
+  systemd:
+    name: "{{ item }}"
+    state: stopped
+    enabled: no
+  failed_when: false
+  loop:
+    - "cloudflared@selfie-portal-1750534817.service"
+    - "cloudflared@selfie-portal-new.service"
+    - "cloudflared@thepub-selfie-portal.service"
+  tags: [cloudflare_cleanup, cloudflare]
+
+- name: Remove old tunnel credential files
+  file:
+    path: "/home/{{ cloudflare_tunnel.user }}/.cloudflared/{{ item }}"
+    state: absent
+  failed_when: false
+  loop:
+    - "selfie-portal-1750534817.json"
+    - "de080d67-cd70-4ba0-b785-caaaaf86d104.json"
+    - "3fce67f6-1d3b-4ef4-b2de-1297ec9d08f5.json"
+    - "c5735772-fdfc-4b2a-88ab-0805ddfa7b6a.json"
+  tags: [cloudflare_cleanup, cloudflare]
+
+- name: Display tunnel cleanup status
+  debug:
+    msg: |
+      🧹 Tunnel Cleanup Status:
+      {% if existing_tunnel_check.stdout | length > 0 %}
+      ✓ Found existing tunnel '{{ cloudflare_tunnel.name }}' - deleted for fresh start
+      ✓ Stopped old tunnel services and cleaned up credential files
+      {% else %}
+      ✓ No existing tunnel '{{ cloudflare_tunnel.name }}' found - ready for creation
+      ✓ Cleaned up any old tunnel services and credential files
+      {% endif %}
+  when: origin_cert_check.stat.exists
+  tags: [cloudflare_cleanup, cloudflare]
+
+- name: Display cloudflared authentication instructions
+  debug:
+    msg: |
+      ========================================
+      CLOUDFLARE TUNNEL AUTHENTICATION REQUIRED
+      ========================================
+      
+      To authenticate with Cloudflare, you need to:
+      
+      1. Run this command manually on the target machine:
+         {{ cloudflare_tunnel.binary_path }} login
+      
+      2. A URL will be displayed - open it in your browser
+      
+      3. Complete the authentication in your browser
+      
+      4. The certificate will be saved to:
+         /home/{{ cloudflare_tunnel.user }}/.cloudflared/cert.pem
+      
+      5. Once complete, press Enter to continue with the playbook
+      
+      NOTE: This step cannot be automated due to browser interaction requirements.
+  when: origin_cert_check is defined and origin_cert_check.stat.exists == false
+  tags: [cloudflare_auth, cloudflare]
+
+- name: Pause for manual authentication
+  pause:
+    prompt: |
+      Please run '{{ cloudflare_tunnel.binary_path }} login' manually on the target machine,
+      complete the browser authentication, then press Enter to continue.
+  when: origin_cert_check is defined and origin_cert_check.stat.exists == false
+  tags: [cloudflare_auth, cloudflare]
+
+- name: Verify origin certificate was created
+  stat:
+    path: "/home/{{ cloudflare_tunnel.user }}/.cloudflared/cert.pem"
+  register: origin_cert_verify
+  when: origin_cert_check is defined and origin_cert_check.stat.exists == false
+  tags: [cloudflare_auth, always, cloudflare]
+
+- name: Fail if origin certificate not created
+  fail:
+    msg: |
+      Origin certificate was not found at /home/{{ cloudflare_tunnel.user }}/.cloudflared/cert.pem
+      
+      Please ensure you have:
+      1. Run '{{ cloudflare_tunnel.binary_path }} login' manually
+      2. Completed the browser authentication
+      3. The certificate file was created successfully
+      
+      Then run this playbook again.
+  when: origin_cert_check is defined and origin_cert_check.stat.exists == false and origin_cert_verify is defined and origin_cert_verify.stat.exists == false
+  tags: [cloudflare_auth, always, cloudflare]
+
+- name: Check if tunnel exists in Cloudflare
+  command: "{{ cloudflare_tunnel.binary_path }} tunnel list"
+  register: tunnel_list_output
+  changed_when: false
+  failed_when: false
+  when: 
+    
+    - not remote_credentials_check.stat.exists
+  become: true
+  become_user: "{{ cloudflare_tunnel.user }}"
+  tags: [cloudflare_auth, cloudflare]
+
+- name: Check if tunnel already exists
+  set_fact:
+    tunnel_exists: "{{ cloudflare_tunnel.name in tunnel_list_output.stdout }}"
+  when: 
+    
+    - not remote_credentials_check.stat.exists
+  tags: [cloudflare_auth, cloudflare]
+
+- name: Debug tunnel existence check
+  debug:
+    msg: |
+      ========================================
+      TUNNEL EXISTENCE DEBUG
+      ========================================
+      
+      Tunnel name: {{ cloudflare_tunnel.name }}
+      Tunnel exists: {{ tunnel_exists | default(false) }}
+      Remote credentials file exists: {{ remote_credentials_check.stat.exists }}
+      
+      Tunnel list output:
+      {{ tunnel_list_output.stdout }}
+  when: 
+    
+    - not remote_credentials_check.stat.exists
+  tags: [cloudflare_auth, cloudflare]
+
+- name: Download tunnel credentials if tunnel exists
+  command: "{{ cloudflare_tunnel.binary_path }} tunnel token {{ cloudflare_tunnel.name }}"
+  register: tunnel_token_output
+  changed_when: false
+  failed_when: false
+  when: 
+    
+    - not remote_credentials_check.stat.exists
+    - tunnel_exists | default(false)
+  become: true
+  become_user: "{{ cloudflare_tunnel.user }}"
+  tags: [cloudflare_auth, cloudflare]
+
+- name: Save tunnel credentials to file (JSON format)
+  copy:
+    content: |
+      {
+        "AccountTag": "6bb8710e2419d53ce4c14f2bfeb83f97",
+        "TunnelSecret": "{{ tunnel_token_output.stdout }}"
+      }
+    dest: "/home/{{ cloudflare_tunnel.user }}/.cloudflared/{{ cloudflare_tunnel.name }}.json"
+    owner: "{{ cloudflare_tunnel.user }}"
+    group: "{{ cloudflare_tunnel.group }}"
+    mode: '0600'
+  when: 
+    
+    - not remote_credentials_check.stat.exists
+    - tunnel_exists | default(false)
+    - tunnel_token_output is defined
+  tags: [cloudflare_auth, cloudflare]
+
+- name: Validate credentials file format
+  shell: |
+    # Check if file contains valid base64 (which is the correct format for tunnel credentials)
+    if base64 -d /home/{{ cloudflare_tunnel.user }}/.cloudflared/{{ cloudflare_tunnel.name }}.json > /dev/null 2>&1; then
+      echo "valid_base64"
+    elif python3 -m json.tool /home/{{ cloudflare_tunnel.user }}/.cloudflared/{{ cloudflare_tunnel.name }}.json > /dev/null 2>&1; then
+      echo "valid_json"
+    else
+      echo "invalid"
+    fi
+  register: credentials_validation_result
+  changed_when: false
+  failed_when: false
+  when: 
+    
+    - not remote_credentials_check.stat.exists
+    - tunnel_exists | default(false)
+    - tunnel_token_output is defined
+  tags: [cloudflare_auth, cloudflare]
+
+- name: Fix invalid credentials file
+  command: "{{ cloudflare_tunnel.binary_path }} tunnel token {{ cloudflare_tunnel.name }}"
+  register: fixed_credentials_output
+  changed_when: false
+  failed_when: false
+  when: 
+    
+    - not remote_credentials_check.stat.exists
+    - tunnel_exists | default(false)
+    - tunnel_token_output is defined
+    - credentials_validation_result is defined
+    - credentials_validation_result is mapping
+    - credentials_validation_result.stdout is defined
+    - credentials_validation_result.stdout != "valid_base64" and credentials_validation_result.stdout != "valid_json"
+  become: true
+  become_user: "{{ cloudflare_tunnel.user }}"
+  tags: [cloudflare_auth, cloudflare]
+
+- name: Save fixed credentials to file (JSON format)
+  copy:
+    content: |
+      {
+        "AccountTag": "6bb8710e2419d53ce4c14f2bfeb83f97",
+        "TunnelSecret": "{{ fixed_credentials_output.stdout }}"
+      }
+    dest: "/home/{{ cloudflare_tunnel.user }}/.cloudflared/{{ cloudflare_tunnel.name }}.json"
+    owner: "{{ cloudflare_tunnel.user }}"
+    group: "{{ cloudflare_tunnel.group }}"
+    mode: '0600'
+  when: 
+    
+    - not remote_credentials_check.stat.exists
+    - tunnel_exists | default(false)
+    - tunnel_token_output is defined
+    - credentials_validation_result is defined
+    - credentials_validation_result is mapping
+    - credentials_validation_result.stdout is defined
+    - credentials_validation_result.stdout != "valid_base64" and credentials_validation_result.stdout != "valid_json"
+    - fixed_credentials_output is defined
+  tags: [cloudflare_auth, cloudflare]
+
+- name: Verify credentials file was created
+  stat:
+    path: "/home/{{ cloudflare_tunnel.user }}/.cloudflared/{{ cloudflare_tunnel.name }}.json"
+  register: credentials_file_check
+  when: 
+    
+    - not remote_credentials_check.stat.exists
+    - tunnel_exists | default(false)
+    - tunnel_token_output is defined
+  tags: [cloudflare_auth, cloudflare]
+
+- name: Display credentials download success
+  debug:
+    msg: |
+      ========================================
+      CREDENTIALS DOWNLOADED SUCCESSFULLY
+      ========================================
+      
+      Tunnel: {{ cloudflare_tunnel.name }}
+      Credentials file: /home/{{ cloudflare_tunnel.user }}/.cloudflared/{{ cloudflare_tunnel.name }}.json
+      
+      The tunnel credentials have been automatically downloaded and saved.
+      Continuing with tunnel setup...
+  when: 
+    
+    - not remote_credentials_check.stat.exists
+    - tunnel_exists | default(false)
+    - tunnel_token_output is defined
+    - credentials_file_check.stat.exists
+  tags: [cloudflare_auth, cloudflare]
+
+- name: Check for existing tunnel processes
+  shell: "pgrep -f 'cloudflared.*tunnel.*run' || echo 'No tunnel processes found'"
+  register: existing_processes_check
+  changed_when: false
+  when: 
+    
+    - not remote_credentials_check.stat.exists
+    - tunnel_exists | default(false)
+    - tunnel_token_output is defined
+    - credentials_file_check.stat.exists
+  become: true
+  become_user: "{{ cloudflare_tunnel.user }}"
+  tags: [cloudflare_auth, cloudflare]
+
+- name: Kill any existing tunnel processes before testing
+  shell: |
+    # Try to kill existing tunnel processes gracefully
+    pkill -f 'cloudflared.*tunnel.*run' 2>/dev/null || true
+    # Wait a moment for processes to terminate
+    sleep 1
+    # Force kill if any remain
+    pkill -9 -f 'cloudflared.*tunnel.*run' 2>/dev/null || true
+  changed_when: false
+  failed_when: false
+  when: 
+    
+    - not remote_credentials_check.stat.exists
+    - tunnel_exists | default(false)
+    - tunnel_token_output is defined
+    - credentials_file_check.stat.exists
+  become: true
+  become_user: "{{ cloudflare_tunnel.user }}"
+  tags: [cloudflare_auth, cloudflare]
+
+- name: Debug process cleanup
+  debug:
+    msg: |
+      ========================================
+      PROCESS CLEANUP DEBUG
+      ========================================
+      
+      Before cleanup: {{ existing_processes_check.stdout }}
+      Cleanup completed successfully
+  when: 
+    
+    - not remote_credentials_check.stat.exists
+    - tunnel_exists | default(false)
+    - tunnel_token_output is defined
+    - credentials_file_check.stat.exists
+    - existing_processes_check is defined
+  tags: [cloudflare_auth, cloudflare]
+
+- name: Test tunnel connection with downloaded credentials
+  command: "{{ cloudflare_tunnel.binary_path }} tunnel --config /etc/cloudflared/config.yml run {{ cloudflare_tunnel.name }}"
+  register: tunnel_test_result
+  changed_when: false
+  failed_when: false
+  async: 30
+  poll: 0
+  when: 
+    
+    - not remote_credentials_check.stat.exists
+    - tunnel_exists | default(false)
+    - tunnel_token_output is defined
+    - credentials_file_check.stat.exists
+  become: true
+  become_user: "{{ cloudflare_tunnel.user }}"
+  tags: [cloudflare_auth, cloudflare]
+
+- name: Debug tunnel test status
+  debug:
+    msg: |
+      ========================================
+      TUNNEL TEST DEBUG
+      ========================================
+      
+      Tunnel test started: {{ tunnel_test_result is defined }}
+      {% if tunnel_test_result is defined %}
+      Async job ID: {{ tunnel_test_result.ansible_job_id }}
+      {% endif %}
+  when: 
+    
+    - not remote_credentials_check.stat.exists
+    - tunnel_exists | default(false)
+    - tunnel_token_output is defined
+    - credentials_file_check.stat.exists
+    - tunnel_test_result is defined
+  tags: [cloudflare_auth, cloudflare]
+
+
+
+- name: Check for existing tunnel processes (alternative path)
+  shell: "pgrep -f 'cloudflared.*tunnel.*run' || echo 'No tunnel processes found'"
+  register: existing_processes_check_alt
+  changed_when: false
+  when: 
+    - not remote_credentials_check.stat.exists
+    - not (tunnel_exists | default(false))
+  become: true
+  become_user: "{{ cloudflare_tunnel.user }}"
+  tags: [cloudflare_auth]
+
+- name: Kill any existing tunnel processes before testing (alternative path)
+  shell: |
+    # Try to kill existing tunnel processes gracefully
+    pkill -f 'cloudflared.*tunnel.*run' 2>/dev/null || true
+    # Wait a moment for processes to terminate
+    sleep 1
+    # Force kill if any remain
+    pkill -9 -f 'cloudflared.*tunnel.*run' 2>/dev/null || true
+  changed_when: false
+  failed_when: false
+  when: 
+    - not remote_credentials_check.stat.exists
+    - not (tunnel_exists | default(false))
+  become: true
+  become_user: "{{ cloudflare_tunnel.user }}"
+  tags: [cloudflare_auth, cloudflare]
+
+- name: Debug process cleanup (alternative path)
+  debug:
+    msg: |
+      ========================================
+      PROCESS CLEANUP DEBUG (ALTERNATIVE PATH)
+      ========================================
+      
+      Before cleanup: {{ existing_processes_check_alt.stdout }}
+      Cleanup completed successfully
+  when: 
+    - not remote_credentials_check.stat.exists
+    - not (tunnel_exists | default(false))
+    - existing_processes_check_alt is defined
+  tags: [cloudflare_auth]
+
+- name: Test tunnel connection with downloaded credentials (alternative path)
+  command: "{{ cloudflare_tunnel.binary_path }} tunnel --config /etc/cloudflared/config.yml run {{ cloudflare_tunnel.name }}"
+  register: tunnel_test_result
+  changed_when: false
+  failed_when: false
+  async: 30
+  poll: 0
+  when: 
+    - not remote_credentials_check.stat.exists
+    - not (tunnel_exists | default(false))
+  become: true
+  become_user: "{{ cloudflare_tunnel.user }}"
+  tags: [cloudflare_auth, cloudflare]
+
+- name: Debug tunnel test status (alternative path)
+  debug:
+    msg: |
+      ========================================
+      TUNNEL TEST DEBUG (ALTERNATIVE PATH)
+      ========================================
+      
+      Tunnel test started: {{ tunnel_test_result is defined }}
+      {% if tunnel_test_result is defined %}
+      Async job ID: {{ tunnel_test_result.ansible_job_id }}
+      {% endif %}
+  when: 
+    - not remote_credentials_check.stat.exists
+    - not (tunnel_exists | default(false))
+    - tunnel_test_result is defined
+  tags: [cloudflare_auth]
+
+- name: Wait for tunnel test
+  wait_for:
+    timeout: 10
+  when: tunnel_test_result is defined
+  tags: [cloudflare_auth, cloudflare]
+
+- name: Check if tunnel test failed
+  command: "{{ cloudflare_tunnel.binary_path }} tunnel info {{ cloudflare_tunnel.name }}"
+  register: tunnel_info_test
+  changed_when: false
+  failed_when: false
+  when: tunnel_test_result is defined
+  become: true
+  become_user: "{{ cloudflare_tunnel.user }}"
+  tags: [cloudflare_auth, cloudflare]
+
+- name: Debug tunnel info test
+  debug:
+    msg: |
+      ========================================
+      TUNNEL INFO TEST DEBUG
+      ========================================
+      
+      tunnel_info_test type: {{ tunnel_info_test | type_debug }}
+      tunnel_info_test value: {{ tunnel_info_test }}
+      
+      {% if tunnel_info_test is defined %}
+      {% if tunnel_info_test is mapping %}
+      {% if tunnel_info_test.rc is defined %}
+      Command succeeded: {{ tunnel_info_test.rc == 0 }}
+      {% if tunnel_info_test.rc == 0 %}
+      Tunnel info output:
+      {{ tunnel_info_test.stdout }}
+      
+      Contains 'does not have any active connection': {{ "'does not have any active connection' in tunnel_info_test.stdout" }}
+      {% else %}
+      Command failed with rc: {{ tunnel_info_test.rc }}
+      Error output: {{ tunnel_info_test.stderr | default('No stderr available') }}
+      {% endif %}
+      {% else %}
+      tunnel_info_test is defined but not a command result (no rc attribute)
+      {% endif %}
+      {% else %}
+      tunnel_info_test is defined but not a mapping/dict
+      {% endif %}
+      {% else %}
+      Tunnel info test was not executed (tunnel_test_result not defined)
+      {% endif %}
+  when: 
+    - tunnel_test_result is defined
+    - tunnel_info_test is defined
+  tags: [cloudflare_auth, cloudflare]
+
+- name: Refresh credentials if tunnel test failed
+  command: "{{ cloudflare_tunnel.binary_path }} tunnel token {{ cloudflare_tunnel.name }}"
+  register: refreshed_credentials_output
+  changed_when: false
+  failed_when: false
+  when: 
+    - tunnel_test_result is defined
+    - tunnel_info_test is defined
+    - tunnel_info_test is mapping
+    - tunnel_info_test.rc is defined
+    - tunnel_info_test.rc == 0
+    - tunnel_info_test.stdout is defined
+    - "'does not have any active connection' in tunnel_info_test.stdout"
+  become: true
+  become_user: "{{ cloudflare_tunnel.user }}"
+  tags: [cloudflare_auth, cloudflare]
+
+- name: Save refreshed credentials to file
+  copy:
+    content: |
+      {
+        "AccountTag": "6bb8710e2419d53ce4c14f2bfeb83f97",
+        "TunnelSecret": "{{ refreshed_credentials_output.stdout }}"
+      }
+    dest: "/home/{{ cloudflare_tunnel.user }}/.cloudflared/{{ cloudflare_tunnel.name }}.json"
+    owner: "{{ cloudflare_tunnel.user }}"
+    group: "{{ cloudflare_tunnel.group }}"
+    mode: '0600'
+  when: 
+    - tunnel_test_result is defined
+    - tunnel_info_test is defined
+    - tunnel_info_test is mapping
+    - tunnel_info_test.rc is defined
+    - tunnel_info_test.rc == 0
+    - tunnel_info_test.stdout is defined
+    - "'does not have any active connection' in tunnel_info_test.stdout"
+    - refreshed_credentials_output is defined
+  tags: [cloudflare_auth, cloudflare]
+
+- name: Display automated tunnel creation instructions
+  debug:
+    msg: |
+      ========================================
+      AUTOMATED TUNNEL CREATION
+      ========================================
+      
+      The tunnel does not exist in Cloudflare. Creating it automatically...
+      
+      This will:
+      - Create the tunnel: {{ cloudflare_tunnel.name }}
+      - Download credentials to: {{ cloudflare_tunnel.credentials_file }}
+      - Route the domain: {{ cloudflare_tunnel.domain }}
+      - Automatically answer 'y' to domain routing
+      
+      Debug info:
+      - tunnel_exists: {{ tunnel_exists | default(false) }}
+      - credentials_file is file: {{ remote_credentials_check.stat.exists }}
+  when: 
+    
+    - not remote_credentials_check.stat.exists
+    - not (tunnel_exists | default(false))
+  tags: [cloudflare_auth, cloudflare]
+
+- name: Execute tunnel creation script with automated input
+  shell: |
+    cd /home/{{ cloudflare_tunnel.user }}
+    ./create-cloudflare-tunnel.sh --auto-route
+  register: tunnel_creation_result
+  changed_when: tunnel_creation_result.rc == 0
+  failed_when: tunnel_creation_result.rc != 0
+  when: 
+    
+    - not remote_credentials_check.stat.exists
+    - not (tunnel_exists | default(false))
+  become: true
+  become_user: "{{ cloudflare_tunnel.user }}"
+  tags: [cloudflare_auth, cloudflare]
+
+- name: Display tunnel exists but credentials needed instructions
+  debug:
+    msg: |
+      ========================================
+      TUNNEL EXISTS - DOWNLOADING CREDENTIALS
+      ========================================
+      
+      The tunnel {{ cloudflare_tunnel.name }} already exists in Cloudflare.
+      Downloading credentials automatically...
+      
+      Debug info:
+      - tunnel_exists: {{ tunnel_exists | default(false) }}
+      - credentials_file is file: {{ remote_credentials_check.stat.exists | default('undefined') }}
+  when: 
+    
+    
+    - not remote_credentials_check.stat.exists
+    - tunnel_exists | default(false)
+  tags: [cloudflare_auth, cloudflare]
+
+- name: Debug conditional logic for tunnel creation script
+  debug:
+    msg: |
+      ========================================
+      CONDITIONAL LOGIC DEBUG
+      ========================================
+      
+      cloudflare_tunnel.credentials_file: {{ cloudflare_tunnel.credentials_file }}
+      Remote credentials file exists: {{ remote_credentials_check.stat.exists | default('undefined') }}
+      tunnel_exists | default(false): {{ tunnel_exists | default(false) }}
+      tunnel_exists (raw): {{ tunnel_exists | default('undefined') }}
+      
+      Both conditions should be true for the script to run.
+  when: 
+    
+    
+    - not remote_credentials_check.stat.exists
+    - tunnel_exists | default(false)
+  tags: [cloudflare_auth, cloudflare]
+
+- name: Check if credentials file exists on remote machine (for debug)
+  stat:
+    path: "{{ cloudflare_tunnel.credentials_file }}"
+  register: remote_credentials_check
+  tags: [cloudflare_auth, cloudflare]
+
+- name: Debug all conditional values
+  debug:
+    msg: |
+      ========================================
+      ALL CONDITIONAL VALUES DEBUG
+      ========================================
+      
+      cloudflare_tunnel.credentials_file: {{ cloudflare_tunnel.credentials_file }}
+      Remote credentials file exists: {{ remote_credentials_check.stat.exists | default('undefined') }}
+      tunnel_exists | default(false): {{ tunnel_exists | default(false) }}
+      tunnel_exists (raw): {{ tunnel_exists | default('undefined') }}
+      
+      This task runs regardless of conditions.
+  tags: [cloudflare_auth, cloudflare]
+
+- name: Execute tunnel creation script for existing tunnel
+  shell: |
+    cd /home/{{ cloudflare_tunnel.user }}
+    echo "y" | ./create-cloudflare-tunnel.sh
+  register: tunnel_creation_result
+  changed_when: tunnel_creation_result.rc == 0
+  failed_when: tunnel_creation_result.rc != 0
+  when: 
+    
+    - not remote_credentials_check.stat.exists
+    - tunnel_exists | default(false)
+  become: true
+  become_user: "{{ cloudflare_tunnel.user }}"
+  tags: [cloudflare_auth, cloudflare]
+
+- name: Debug tunnel creation script output
+  debug:
+    msg: |
+      ========================================
+      TUNNEL CREATION SCRIPT DEBUG
+      ========================================
+      
+      Return code: {{ tunnel_creation_result.rc }}
+      Stdout: {{ tunnel_creation_result.stdout }}
+      Stderr: {{ tunnel_creation_result.stderr }}
+  when: 
+    
+    - not remote_credentials_check.stat.exists
+    - tunnel_exists | default(false)
+    - tunnel_creation_result is defined
+  tags: [cloudflare_auth, cloudflare]
+
+- name: Display tunnel creation success
+  debug:
+    msg: |
+      ========================================
+      TUNNEL CREATION COMPLETED
+      ========================================
+      
+      {{ tunnel_creation_result.stdout }}
+      
+      The tunnel has been created and configured automatically.
+  when: 
+    
+    - not remote_credentials_check.stat.exists
+    - not (tunnel_exists | default(false))
+    - tunnel_creation_result is defined
+    - tunnel_creation_result.rc == 0
+  tags: [cloudflare_auth, cloudflare]
+
+- name: Display tunnel credentials download success
+  debug:
+    msg: |
+      ========================================
+      TUNNEL CREDENTIALS DOWNLOADED
+      ========================================
+      
+      {{ tunnel_creation_result.stdout }}
+      
+      The tunnel credentials have been downloaded successfully.
+  when: 
+    
+    - not remote_credentials_check.stat.exists
+    - tunnel_exists | default(false)
+    - tunnel_creation_result is defined
+    - tunnel_creation_result.rc == 0
+  tags: [cloudflare_auth, cloudflare]
+
+- name: Display tunnel credentials download success (alternative)
+  debug:
+    msg: |
+      ========================================
+      TUNNEL CREDENTIALS DOWNLOADED (ALTERNATIVE)
+      ========================================
+      
+      The tunnel credentials have been downloaded successfully.
+      Note: Script may have failed but credentials were created.
+  when: 
+    
+    - not remote_credentials_check.stat.exists
+    - tunnel_exists | default(false)
+    - tunnel_creation_result is defined
+    - tunnel_creation_result.rc != 0
+  tags: [cloudflare_auth, cloudflare]
+
+- name: Verify credentials file was created after script execution
+  stat:
+    path: "/home/{{ cloudflare_tunnel.user }}/.cloudflared/{{ cloudflare_tunnel.name }}.json"
+  register: post_script_credentials_check
+  when: 
+    
+    - not remote_credentials_check.stat.exists
+    - tunnel_creation_result is defined
+  tags: [cloudflare_auth, cloudflare]
+
+- name: Display credentials verification
+  debug:
+    msg: |
+      ========================================
+      CREDENTIALS VERIFICATION
+      ========================================
+      
+      {% if post_script_credentials_check.stat.exists %}
+      ✓ Credentials file created successfully: /home/{{ cloudflare_tunnel.user }}/.cloudflared/{{ cloudflare_tunnel.name }}.json
+      {% else %}
+      ⚠ Credentials file not found. This may indicate an issue with the tunnel setup.
+      {% endif %}
+      
+      {% if tunnel_creation_result is defined %}
+      Script exit code: {{ tunnel_creation_result.rc }}
+      {% else %}
+      Script was not executed (task was skipped)
+      {% endif %}
+  when: 
+    
+    - not remote_credentials_check.stat.exists
+    - post_script_credentials_check is defined
+  tags: [cloudflare_auth, cloudflare]
+
+- name: Continue if credentials file was created despite script failure
+  debug:
+    msg: |
+      ========================================
+      CONTINUING DESPITE SCRIPT FAILURE
+      ========================================
+      
+      The script failed with exit code {{ tunnel_creation_result.rc }}, but the credentials file was created successfully.
+      Continuing with tunnel setup...
+  when: 
+    
+    - not remote_credentials_check.stat.exists
+    - tunnel_creation_result is defined
+    - tunnel_creation_result.rc != 0
+    - post_script_credentials_check.stat.exists
+  tags: [cloudflare_auth, cloudflare]
+
+- name: Continue if credentials file exists but script was skipped
+  debug:
+    msg: |
+      ========================================
+      CONTINUING WITH EXISTING CREDENTIALS
+      ========================================
+      
+      The script was not executed (task was skipped), but the credentials file exists.
+      Continuing with tunnel setup...
+  when: 
+    
+    - not remote_credentials_check.stat.exists
+    - tunnel_creation_result is not defined
+    - post_script_credentials_check.stat.exists
+  tags: [cloudflare_auth, cloudflare]
+
+- name: Skip copying credentials file (already exists on remote)
+  debug:
+    msg: |
+      ========================================
+      CREDENTIALS FILE ALREADY EXISTS
+      ========================================
+      
+      The credentials file already exists on the remote machine:
+      {{ cloudflare_tunnel.credentials_file }}
+      
+      Skipping copy operation.
+  when: 
+    
+    - remote_credentials_check.stat.exists
+  tags: [cloudflare_auth, cloudflare]
+
+- name: Copy tunnel credentials file from local (if exists locally)
   copy:
     src: "{{ cloudflare_tunnel.credentials_file }}"
     dest: "/home/{{ cloudflare_tunnel.user }}/.cloudflared/{{ cloudflare_tunnel.name }}.json"
     owner: "{{ cloudflare_tunnel.user }}"
     group: "{{ cloudflare_tunnel.group }}"
     mode: '0600'
-  when: cloudflare_tunnel.credentials_file is file
+  when: 
+    
+    - not remote_credentials_check.stat.exists
+    - cloudflare_tunnel.credentials_file is file
+  tags: [cloudflare_auth, cloudflare]
+
+- name: Validate existing credentials file format
+  shell: |
+    # Check if file contains valid base64 (which is the correct format for tunnel credentials)
+    if base64 -d /home/{{ cloudflare_tunnel.user }}/.cloudflared/{{ cloudflare_tunnel.name }}.json > /dev/null 2>&1; then
+      echo "valid_base64"
+    elif python3 -m json.tool /home/{{ cloudflare_tunnel.user }}/.cloudflared/{{ cloudflare_tunnel.name }}.json > /dev/null 2>&1; then
+      echo "valid_json"
+    else
+      echo "invalid"
+    fi
+  register: existing_credentials_validation_result
+  changed_when: false
+  failed_when: false
+  when: 
+    
+    - remote_credentials_check.stat.exists
+  tags: [cloudflare_auth, cloudflare]
+
+- name: Fix existing invalid credentials file
+  command: "{{ cloudflare_tunnel.binary_path }} tunnel token {{ cloudflare_tunnel.name }}"
+  register: existing_fixed_credentials_output
+  changed_when: false
+  failed_when: false
+  when: 
+    
+    - remote_credentials_check.stat.exists
+    - existing_credentials_validation_result is defined
+    - existing_credentials_validation_result is mapping
+    - existing_credentials_validation_result.stdout is defined
+    - existing_credentials_validation_result.stdout != "valid_base64" and existing_credentials_validation_result.stdout != "valid_json"
+  become: true
+  become_user: "{{ cloudflare_tunnel.user }}"
+  tags: [cloudflare_auth, cloudflare]
+
+- name: Save fixed existing credentials to file
+  copy:
+    content: "{{ existing_fixed_credentials_output.stdout }}"
+    dest: "/home/{{ cloudflare_tunnel.user }}/.cloudflared/{{ cloudflare_tunnel.name }}.json"
+    owner: "{{ cloudflare_tunnel.user }}"
+    group: "{{ cloudflare_tunnel.group }}"
+    mode: '0600'
+  when: 
+    
+    - remote_credentials_check.stat.exists
+    - existing_credentials_validation_result is defined
+    - existing_credentials_validation_result is mapping
+    - existing_credentials_validation_result.stdout is defined
+    - existing_credentials_validation_result.stdout != "valid_base64" and existing_credentials_validation_result.stdout != "valid_json"
+    - existing_fixed_credentials_output is defined
+  tags: [cloudflare_auth, cloudflare]
 
 - name: Create cloudflared config.yml
   template:
@@ -41,6 +938,20 @@
     group: "{{ cloudflare_tunnel.group }}"
     mode: '0644'
   notify: restart cloudflared
+  tags: [cloudflare]
+
+- name: Stop and disable any existing cloudflared services
+  systemd:
+    name: "cloudflared@{{ item }}"
+    state: stopped
+    enabled: no
+  loop:
+    - "selfie-portal-1750534817"
+    - "ansibledest"
+    - "{{ ansible_hostname }}"
+  ignore_errors: true
+  register: stop_services_result
+  tags: [cloudflare]
 
 - name: Create systemd service template
   template:
@@ -50,11 +961,318 @@
     group: root
     mode: '0644'
   notify: restart cloudflared
+  tags: [cloudflare]
+
+
+- name: Fix service permissions (ProtectHome setting)
+  replace:
+    path: /etc/systemd/system/cloudflared@.service
+    regexp: 'ProtectHome=true'
+    replace: 'ProtectHome=read-only'
+  notify: restart cloudflared
+  tags: [cloudflare]
+
+
+- name: Ensure cloudflared directory permissions are correct
+  file:
+    path: "/home/{{ cloudflare_tunnel.user }}/.cloudflared"
+    state: directory
+    owner: "{{ cloudflare_tunnel.user }}"
+    group: "{{ cloudflare_tunnel.group }}"
+    mode: '0700'
+  notify: restart cloudflared
+  tags: [cloudflare]
+
+- name: Ensure certificate file permissions are correct
+  file:
+    path: "/home/{{ cloudflare_tunnel.user }}/.cloudflared/cert.pem"
+    owner: "{{ cloudflare_tunnel.user }}"
+    group: "{{ cloudflare_tunnel.group }}"
+    mode: '0600'
+  notify: restart cloudflared
+  tags: [cloudflare]
+
+- name: Ensure credentials file permissions are correct
+  file:
+    path: "/home/{{ cloudflare_tunnel.user }}/.cloudflared/{{ cloudflare_tunnel.name }}.json"
+    owner: "{{ cloudflare_tunnel.user }}"
+    group: "{{ cloudflare_tunnel.group }}"
+    mode: '0600'
+  notify: restart cloudflared
+  tags: [cloudflare]
+
+
+- name: Reload systemd daemon
+  systemd:
+    daemon_reload: yes
+  tags: [cloudflare]
 
 - name: Enable and start cloudflared service
   systemd:
     name: "{{ cloudflare_tunnel.service_name }}"
     state: started
     enabled: yes
-    daemon_reload: yes
-  notify: restart cloudflared 
+  register: service_start_result
+  notify: restart cloudflared
+  tags: [cloudflare]
+
+- name: Wait for service to stabilize
+  wait_for:
+    timeout: 10
+  when: service_start_result is changed
+  tags: [cloudflare]
+
+- name: Check service status
+  systemd:
+    name: "{{ cloudflare_tunnel.service_name }}"
+  register: service_status_check
+  tags: [cloudflare]
+
+- name: Display service status
+  debug:
+    msg: |
+      ========================================
+      CLOUDFLARE TUNNEL SERVICE STATUS
+      ========================================
+      
+      Service: {{ cloudflare_tunnel.service_name }}
+      Status: {{ service_status_check.status.ActiveState }}
+      
+      {% if service_status_check.status.ActiveState == 'active' %}
+      ✓ Service is running successfully!
+      Your tunnel should now be accessible at: https://{{ cloudflare_tunnel.domain }}
+      {% else %}
+      ⚠ Service is not running properly
+      Check logs with: journalctl -u {{ cloudflare_tunnel.service_name }} --no-pager -n 20
+      {% endif %}
+  tags: [cloudflare]
+
+
+- name: Wait for tunnel to connect (if service is active)
+  wait_for:
+    timeout: 30
+  when: service_status_check.status.ActiveState == 'active'
+  tags: [cloudflare]
+
+- name: Check tunnel connection status
+  command: "{{ cloudflare_tunnel.binary_path }} tunnel info {{ cloudflare_tunnel.name }}"
+  register: tunnel_info_output
+  changed_when: false
+  failed_when: false
+  when: service_status_check.status.ActiveState == 'active'
+  tags: [cloudflare]
+
+- name: Check for authentication errors in service logs
+  shell: "journalctl -u {{ cloudflare_tunnel.service_name }} --no-pager -n 20 | grep -i 'Invalid tunnel secret\\|Unauthorized' || echo 'No auth errors'"
+  register: auth_error_check
+  changed_when: false
+  failed_when: false
+  when: service_status_check.status.ActiveState == 'active'
+  tags: [cloudflare]
+
+- name: Create new tunnel if authentication fails
+  command: "{{ cloudflare_tunnel.binary_path }} tunnel create {{ cloudflare_tunnel.name }}-new"
+  register: new_tunnel_creation
+  changed_when: false
+  failed_when: false
+  when: 
+    - service_status_check.status.ActiveState == 'active'
+    - auth_error_check.stdout is defined
+    - "'Invalid tunnel secret' in auth_error_check.stdout or 'Unauthorized' in auth_error_check.stdout"
+  become: true
+  become_user: "{{ cloudflare_tunnel.user }}"
+  tags: [cloudflare]
+
+- name: Update config to use new tunnel if created
+  replace:
+    path: "{{ cloudflare_tunnel.config_dir }}/config.yml"
+    regexp: "tunnel: {{ cloudflare_tunnel.name }}"
+    replace: "tunnel: {{ cloudflare_tunnel.name }}-new"
+  when:
+    - new_tunnel_creation is defined
+    - new_tunnel_creation.rc == 0
+  notify: restart cloudflared
+  tags: [cloudflare]
+
+- name: Update config credentials path for new tunnel
+  replace:
+    path: "{{ cloudflare_tunnel.config_dir }}/config.yml"
+    regexp: "credentials-file: /home/{{ cloudflare_tunnel.user }}/.cloudflared/{{ cloudflare_tunnel.name }}.json"
+    replace: "credentials-file: /home/{{ cloudflare_tunnel.user }}/.cloudflared/{{ cloudflare_tunnel.name }}-new.json"
+  when:
+    - new_tunnel_creation is defined
+    - new_tunnel_creation.rc == 0
+  notify: restart cloudflared
+  tags: [cloudflare]
+
+- name: Get tunnel ID for DNS configuration
+  command: "{{ cloudflare_tunnel.binary_path }} tunnel list"
+  register: tunnel_list_for_dns
+  changed_when: false
+  failed_when: false
+  when: service_status_check.status.ActiveState == 'active'
+  become: true
+  become_user: "{{ cloudflare_tunnel.user }}"
+  tags: [cloudflare]
+
+- name: Extract tunnel ID from tunnel list
+  set_fact:
+    current_tunnel_id: "{{ tunnel_list_for_dns.stdout | regex_search('([a-f0-9-]{36})\\s+' + cloudflare_tunnel.name, '\\1') | first }}"
+  when: 
+    - service_status_check.status.ActiveState == 'active'
+    - tunnel_list_for_dns.stdout is defined
+  tags: [cloudflare]
+
+- name: Attempt automatic DNS route configuration
+  command: "{{ cloudflare_tunnel.binary_path }} tunnel route dns {{ cloudflare_tunnel.name }} {{ cloudflare_tunnel.domain }}"
+  register: auto_dns_result
+  changed_when: false
+  failed_when: false
+  when: 
+    - service_status_check.status.ActiveState == 'active'
+    - current_tunnel_id is defined
+  become: true
+  become_user: "{{ cloudflare_tunnel.user }}"
+  tags: [cloudflare]
+
+- name: Display DNS configuration instructions
+  debug:
+    msg: |
+      ========================================
+      {% if auto_dns_result is defined and auto_dns_result.rc == 0 %}
+      ✅ DNS AUTOMATICALLY CONFIGURED
+      ========================================
+      
+      Great! The DNS record has been automatically updated to point to your tunnel.
+      The domain {{ cloudflare_tunnel.domain }} should now work externally.
+      
+      {% else %}
+      📋 MANUAL DNS CONFIGURATION REQUIRED
+      ========================================
+      {% if auto_dns_result is defined and auto_dns_result.rc != 0 %}
+      
+      ⚠️  Automatic DNS configuration failed:
+      {{ auto_dns_result.stderr | default(auto_dns_result.stdout) }}
+      
+      This usually means a CNAME record already exists. You need to update it manually.
+      {% endif %}
+      
+      Your Cloudflare tunnel is running successfully! However, you need to manually
+      update the DNS record to point to the correct tunnel.
+      
+      🌐 STEP 1: Go to Cloudflare Dashboard
+      └─ Visit: https://dash.cloudflare.com/
+      └─ Navigate to: Your Domain → DNS → Records
+      
+      🔍 STEP 2: Find the CNAME Record
+      └─ Look for: {{ cloudflare_tunnel.domain }}
+      └─ Type: CNAME
+      
+      🆔 STEP 3: Get Your Tunnel ID
+      {% if current_tunnel_id is defined %}
+      └─ Your tunnel ID is: {{ current_tunnel_id }}
+      └─ (This has been automatically detected for you)
+      {% else %}
+      └─ SSH into your Pi and run: {{ cloudflare_tunnel.binary_path }} tunnel list
+      └─ Find the line with "{{ cloudflare_tunnel.name }}" and copy the 36-character ID
+      └─ Example: 3fce67f6-1d3b-4ef4-b2de-1297ec9d08f5
+      {% endif %}
+      
+      ✏️  STEP 4: Update the Target Value
+      {% if current_tunnel_id is defined %}
+      └─ Change CNAME target to: {{ current_tunnel_id }}.cfargotunnel.com
+      {% else %}
+      └─ Change CNAME target to: [YOUR-TUNNEL-ID].cfargotunnel.com
+      └─ (Replace [YOUR-TUNNEL-ID] with the ID from Step 3)
+      {% endif %}
+      
+      💡 STEP 5: Save and Wait
+      └─ Click "Save"
+      └─ Wait 1-2 minutes for DNS propagation
+      └─ Test: https://{{ cloudflare_tunnel.domain }}
+      
+      ✨ IMPORTANT: This playbook now uses stable tunnel name '{{ cloudflare_tunnel.name }}'
+      └─ Fresh tunnel created each deployment for maximum reliability
+      └─ HTTP2 protocol used for better Raspberry Pi compatibility
+      
+      🔧 To get the correct tunnel ID, run:
+      sudo -u {{ cloudflare_tunnel.user }} {{ cloudflare_tunnel.binary_path }} tunnel list
+      
+  when: service_status_check.status.ActiveState == 'active'
+  tags: [cloudflare]
+
+- name: Wait for manual DNS update confirmation
+  pause:
+    prompt: |
+      
+      ⏳ Please complete the DNS update in the Cloudflare dashboard as instructed above.
+      
+      Once you've updated the CNAME record and it's had time to propagate (1-2 minutes),
+      press Enter to continue with validation...
+      
+  when: 
+    - service_status_check.status.ActiveState == 'active'
+    - auto_dns_result is defined
+    - auto_dns_result.rc != 0
+  tags: [cloudflare]
+
+- name: Wait for automatic DNS propagation
+  pause:
+    seconds: 30
+    prompt: "⏳ Waiting for DNS propagation (30 seconds)..."
+  when:
+    - service_status_check.status.ActiveState == 'active' 
+    - auto_dns_result is defined
+    - auto_dns_result.rc == 0
+  tags: [cloudflare]
+
+- name: Test external access after DNS update
+  uri:
+    url: "https://{{ cloudflare_tunnel.domain }}/"
+    method: GET
+    timeout: 15
+    status_code: [200, 301, 302]
+  register: external_access_test
+  failed_when: false
+  when: service_status_check.status.ActiveState == 'active'
+  tags: [cloudflare]
+
+- name: Display tunnel connection status
+  debug:
+    msg: |
+      ========================================
+      TUNNEL CONNECTION STATUS
+      ========================================
+      
+      {% if tunnel_info_output.stdout is defined %}
+      {{ tunnel_info_output.stdout }}
+      {% else %}
+      Unable to retrieve tunnel information
+      {% endif %}
+      
+      {% if service_status_check.status.ActiveState == 'active' %}
+      ✓ Tunnel service is running
+      {% if current_tunnel_id is defined %}
+      ✓ Tunnel ID: {{ current_tunnel_id }}
+      {% endif %}
+      
+      {% if external_access_test is defined and external_access_test.status is defined and external_access_test.status in [200, 301, 302] %}
+      ✅ SUCCESS: External access working! https://{{ cloudflare_tunnel.domain }}
+      {% elif external_access_test is defined %}
+      ⚠️  External access test failed (HTTP {{ external_access_test.status | default('timeout') }})
+      
+      If you're still getting errors, check:
+      1. DNS propagation (may take up to 5 minutes)
+      2. Make sure you used the correct tunnel ID in the CNAME record
+      3. Local service availability: curl -H "Host: {{ cloudflare_tunnel.domain }}" http://localhost:80/
+      4. Tunnel logs: journalctl -u {{ cloudflare_tunnel.service_name }} --no-pager -f
+      {% else %}
+      ℹ️  External access test skipped
+      {% endif %}
+      
+      🏠 LOCAL ACCESS (WiFi clients): 
+      └─ Users on "JoinMe" WiFi can access https://{{ cloudflare_tunnel.domain }}
+      └─ This works via local DNS redirect (dnsmasq configuration)
+      
+      {% endif %} 
+  tags: [cloudflare]

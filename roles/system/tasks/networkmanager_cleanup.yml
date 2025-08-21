@@ -1,0 +1,30 @@
+---
+- name: Remove NetworkManager dnsmasq integration
+  file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/NetworkManager/dnsmasq-shared.d
+    - /etc/NetworkManager/conf.d/99-wifi-ap.conf
+
+- name: Create clean NetworkManager configuration
+  copy:
+    dest: /etc/NetworkManager/conf.d/99-wifi-ap.conf
+    content: |
+      [main]
+      # Don't manage the WiFi interface we're using for the access point
+      unmanaged-devices=interface-name:{{ wifi_interface }}
+      
+      # Use system DNS resolver (dnsmasq will handle DNS)
+      dns=default
+      
+      # Don't automatically connect to WiFi networks
+      no-auto-default=*
+    mode: '0644'
+    owner: root
+    group: root
+
+- name: Restart NetworkManager to apply changes
+  systemd:
+    name: NetworkManager
+    state: restarted 
