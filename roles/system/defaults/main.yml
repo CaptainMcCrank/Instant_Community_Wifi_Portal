@@ -14,7 +14,7 @@ wifi_ip: "10.10.42.1"
 wifi_interface: "wlan1"
 interface_name: "wlan1"
 gateway_interface: "wlan0"
-tunnel_name: "selfie-portal-1750534817"
+tunnel_name: "selfie-portal-working"
 tunnel_domain: "selfies.griffincreektrestle.net"
 ap_name: "JoinMe-AP"
 ssid: "JoinMe"
@@ -26,5 +26,5 @@ version:
   Author: p@mccannabanana.com
 
 # Cloudflare tunnel configuration moved to cloudflare_tunnel role
-# tunnel_name: "selfie-portal-1750534817"
+# tunnel_name: "selfie-portal-working"
 # tunnel_domain: "selfies.griffincreektrestle.net"

@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Griffin Creek Trestle Gnome Selfie Portal!</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <meta name="description" content="Live gallery from Griffin Creek Trestle community WiFi portal - see what neighbors are sharing!">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <h1><i class="fas fa-camera"></i> Griffin Creek Trestle Gnome Selfie Portal!</h1>
+                <p>Live from Tibbins' secret lair beneath the trestle</p>
+            </div>
+        </header>
+
+        <!-- Gnome Introduction Section -->
+        <section class="gnome-intro">
+            <div class="gnome-content">
+                <div class="gnome-avatar">
+                    <i class="fas fa-hat-wizard gnome-icon"></i>
+                </div>
+                <div class="gnome-message">
+                    <h2><i class="fas fa-sparkles"></i> Hee-hee-ho! Look what I've collected!</h2>
+                    <div class="gnome-text">
+                        <p>Tibbins here, reporting from my secret lair beneath Griffin Creek Trestle! You've stumbled upon my collection of human specimens — er, I mean, my dear friends who've visited my magical WiFi realm!</p>
+                        
+                        <p>Each face you see was captured when brave souls connected to my enchanted network. Little did they know, I was studying their curious human expressions for my Grand Gnome Research! Look at all these wonderful creatures I've tricked into sharing their visages!</p>
+                        
+                        <p>This gallery updates live from my trestle hideout, where locals gather to share their stories through pictures. You're witnessing a real community in action — but from afar, like a gnome peering through the digital hedgerows!</p>
+                        
+                        <p class="gnome-signature"><strong>Want to join the fun? Visit Griffin Creek Trestle and connect to my WiFi network!</strong></p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Network Info Banner -->
+        <section class="network-info">
+            <div class="info-banner">
+                <i class="fas fa-broadcast-tower"></i>
+                <div class="info-content">
+                    <h3>Live Community Gallery</h3>
+                    <p>This gallery shows photos shared by visitors to our local community WiFi network at Griffin Creek Trestle. Each image represents a real person who stopped by to connect and share a moment with our neighborhood!</p>
+                    {% if network_tier == 'external' %}
+                    <p class="network-note"><i class="fas fa-globe"></i> Viewing from the internet</p>
+                    {% elif network_tier == 'semi_public' %}
+                    <p class="network-note"><i class="fas fa-wifi"></i> Viewing from local network</p>
+                    {% endif %}
+                </div>
+            </div>
+        </section>
+
+        <!-- Gallery Section -->
+        <section class="gallery-section">
+            <div class="gallery-header">
+                <h2><i class="fas fa-images"></i> Recent Visitors to Tibbins' Realm</h2>
+                <p class="gallery-subtitle">{{ selfies|length }} humans have been successfully catalogued!</p>
+            </div>
+
+            {% if selfies %}
+            <div class="gallery-grid">
+                {% for selfie in selfies %}
+                <div class="gallery-item">
+                    <div class="selfie-card">
+                        <div class="selfie-image-container">
+                            <img src="/data/uploads/{{ selfie.filename }}" 
+                                 alt="Community member selfie" 
+                                 class="selfie-image"
+                                 loading="lazy">
+                            <div class="selfie-overlay">
+                                <div class="selfie-date">
+                                    <i class="fas fa-calendar"></i>
+                                    {{ selfie.timestamp[:10] }}
+                                </div>
+                            </div>
+                        </div>
+                        {% if selfie.caption %}
+                        <div class="selfie-caption">
+                            <i class="fas fa-quote-left"></i>
+                            {{ selfie.caption }}
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="empty-gallery">
+                <div class="empty-message">
+                    <i class="fas fa-camera-retro"></i>
+                    <h3>No visitors yet!</h3>
+                    <p>Tibbins is still waiting for the first brave soul to connect to the Griffin Creek Trestle WiFi network and share their visage!</p>
+                </div>
+            </div>
+            {% endif %}
+        </section>
+
+        <!-- About Section -->
+        <section class="about-section">
+            <div class="about-content">
+                <h2><i class="fas fa-info-circle"></i> About This Portal</h2>
+                <div class="about-text">
+                    <p>The Griffin Creek Trestle Selfie Portal is part of an experimental community WiFi project. Visitors to our location can connect to a local network that serves this interactive photo-sharing experience, fostering connection and creativity in our neighborhood.</p>
+                    
+                    <p>This is a live, read-only view into that local community space. Photos are shared voluntarily by visitors and automatically curated for public viewing. The network creates an offline-first community experience that brings neighbors together through technology.</p>
+                </div>
+                
+                <div class="project-stats">
+                    <div class="stat-item">
+                        <i class="fas fa-users"></i>
+                        <span>{{ selfies|length }}</span>
+                        <label>Community Members</label>
+                    </div>
+                    <div class="stat-item">
+                        <i class="fas fa-clock"></i>
+                        <span id="lastUpdate">Live</span>
+                        <label>Last Updated</label>
+                    </div>
+                    <div class="stat-item">
+                        <i class="fas fa-wifi"></i>
+                        <span>Griffin Creek</span>
+                        <label>Location</label>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <div class="footer-content">
+                <p><i class="fas fa-heart"></i> Built with community spirit at Griffin Creek Trestle</p>
+                <p class="footer-note">This is a read-only view. To participate, visit us in person!</p>
+            </div>
+        </footer>
+    </div>
+
+    <!-- Auto-refresh functionality -->
+    <script>
+        // Auto-refresh gallery every 2 minutes for external viewers
+        {% if network_tier == 'external' %}
+        setInterval(function() {
+            window.location.reload();
+        }, 120000); // 2 minutes
+        {% endif %}
+
+        // Update timestamp
+        document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString();
+        
+        // Refresh timestamp every minute
+        setInterval(function() {
+            document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString();
+        }, 60000);
+    </script>
+
+    <style>
+        /* Additional styles for public gallery */
+        .network-info {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 15px;
+        }
+
+        .info-banner {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .info-banner i {
+            font-size: 2.5em;
+            opacity: 0.8;
+        }
+
+        .info-content h3 {
+            margin: 0 0 10px 0;
+            font-size: 1.4em;
+        }
+
+        .network-note {
+            background: rgba(255,255,255,0.2);
+            padding: 5px 10px;
+            border-radius: 20px;
+            display: inline-block;
+            margin-top: 10px;
+            font-size: 0.9em;
+        }
+
+        .gallery-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .selfie-card {
+            background: white;
+            border-radius: 15px;
+            overflow: hidden;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            transition: transform 0.3s ease;
+        }
+
+        .selfie-card:hover {
+            transform: translateY(-5px);
+        }
+
+        .selfie-image-container {
+            position: relative;
+            padding-bottom: 100%; /* 1:1 aspect ratio */
+            overflow: hidden;
+        }
+
+        .selfie-image {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .selfie-overlay {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: linear-gradient(transparent, rgba(0,0,0,0.7));
+            padding: 20px 15px 10px;
+        }
+
+        .selfie-date {
+            color: white;
+            font-size: 0.9em;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .selfie-caption {
+            padding: 15px;
+            font-style: italic;
+            color: #666;
+            border-top: 1px solid #f0f0f0;
+        }
+
+        .about-section {
+            background: #f8f9fa;
+            padding: 40px 20px;
+            margin: 40px 0;
+            border-radius: 15px;
+        }
+
+        .project-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 20px;
+            margin-top: 30px;
+        }
+
+        .stat-item {
+            text-align: center;
+            padding: 20px;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+
+        .stat-item i {
+            font-size: 2em;
+            color: #667eea;
+            margin-bottom: 10px;
+        }
+
+        .stat-item span {
+            display: block;
+            font-size: 1.5em;
+            font-weight: bold;
+            color: #333;
+        }
+
+        .stat-item label {
+            display: block;
+            font-size: 0.9em;
+            color: #666;
+            margin-top: 5px;
+        }
+
+        .empty-gallery {
+            text-align: center;
+            padding: 60px 20px;
+            color: #666;
+        }
+
+        .empty-message i {
+            font-size: 4em;
+            color: #ddd;
+            margin-bottom: 20px;
+        }
+
+        .footer {
+            text-align: center;
+            padding: 30px 20px;
+            border-top: 1px solid #eee;
+            margin-top: 40px;
+        }
+
+        .footer-content p {
+            margin: 5px 0;
+            color: #666;
+        }
+
+        .footer-note {
+            font-size: 0.9em;
+            opacity: 0.8;
+        }
+
+        /* Mobile responsiveness */
+        @media (max-width: 768px) {
+            .info-banner {
+                flex-direction: column;
+                text-align: center;
+            }
+
+            .gallery-grid {
+                grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+                gap: 15px;
+            }
+
+            .project-stats {
+                grid-template-columns: 1fr;
+                gap: 15px;
+            }
+        }
+    </style>
+</body>
+</html>

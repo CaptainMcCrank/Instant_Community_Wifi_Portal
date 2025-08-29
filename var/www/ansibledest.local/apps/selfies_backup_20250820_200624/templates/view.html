@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Selfie View - Community WiFi</title>
+    <link rel="stylesheet" href="/selfies/static/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <a href="/selfies/" class="back-btn">
+                    <i class="fas fa-arrow-left"></i>
+                </a>
+                <h1>Selfie View</h1>
+            </div>
+        </header>
+
+        <!-- Selfie Display -->
+        <section class="selfie-view">
+            <div class="selfie-container">
+                <img src="/selfies/data/uploads/{{ selfie.filename }}" 
+                     alt="Selfie" class="selfie-full">
+                
+                <div class="selfie-details">
+                    {% if selfie.caption %}
+                    <div class="caption-display">
+                        <h3><i class="fas fa-comment"></i> Caption</h3>
+                        <p>{{ selfie.caption }}</p>
+                    </div>
+                    {% endif %}
+                    
+                    <div class="metadata">
+                        <div class="meta-item">
+                            <i class="fas fa-clock"></i>
+                            <span>{{ selfie.timestamp[:16].replace('T', ' ') }}</span>
+                        </div>
+                        <div class="meta-item">
+                            <i class="fas fa-hashtag"></i>
+                            <span>ID: {{ selfie.id }}</span>
+                        </div>
+                        {% if selfie.file_size %}
+                        <div class="meta-item">
+                            <i class="fas fa-file-image"></i>
+                            <span>{{ (selfie.file_size / 1024) | round(1) }} KB</span>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Action Buttons -->
+        <section class="actions">
+            <div class="action-buttons">
+                <button class="btn btn-primary" onclick="downloadImage()">
+                    <i class="fas fa-download"></i> Download
+                </button>
+                <button class="btn btn-secondary" onclick="shareImage()">
+                    <i class="fas fa-share"></i> Share
+                </button>
+                <button class="btn btn-danger" onclick="deleteSelfie()">
+                    <i class="fas fa-trash"></i> Delete
+                </button>
+            </div>
+        </section>
+
+        <!-- Navigation -->
+        <nav class="bottom-nav">
+            <a href="/selfies/" class="nav-item">
+                <i class="fas fa-camera"></i>
+                <span>Camera</span>
+            </a>
+            <a href="/selfies/" class="nav-item">
+                <i class="fas fa-images"></i>
+                <span>Gallery</span>
+            </a>
+            <a href="/" class="nav-item">
+                <i class="fas fa-home"></i>
+                <span>Home</span>
+            </a>
+        </nav>
+    </div>
+
+    <!-- Toast Notifications -->
+    <div id="toast" class="toast"></div>
+
+    <script>
+        const selfieId = '{{ selfie.id }}';
+        const imageUrl = '/selfies/data/uploads/{{ selfie.filename }}';
+
+        function showToast(message, type = 'info') {
+            const toast = document.getElementById('toast');
+            toast.textContent = message;
+            toast.className = `toast toast-${type}`;
+            toast.style.display = 'block';
+            
+            setTimeout(() => {
+                toast.style.display = 'none';
+            }, 3000);
+        }
+
+        function downloadImage() {
+            const link = document.createElement('a');
+            link.href = imageUrl;
+            link.download = 'selfie_{{ selfie.id }}.jpg';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            showToast('Download started!', 'success');
+        }
+
+        function shareImage() {
+            if (navigator.share) {
+                navigator.share({
+                    title: 'Community Selfie',
+                    text: 'Check out this selfie from the community!',
+                    url: window.location.href
+                }).catch(console.error);
+            } else {
+                // Fallback: copy URL to clipboard
+                navigator.clipboard.writeText(window.location.href).then(() => {
+                    showToast('Link copied to clipboard!', 'success');
+                }).catch(() => {
+                    showToast('Could not copy link', 'error');
+                });
+            }
+        }
+
+        function deleteSelfie() {
+            if (confirm('Are you sure you want to delete this selfie? This action cannot be undone.')) {
+                fetch(`/selfies/delete/${selfieId}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        showToast('Selfie deleted successfully!', 'success');
+                        setTimeout(() => {
+                            window.location.href = '/selfies/';
+                        }, 1500);
+                    } else {
+                        showToast('Failed to delete selfie', 'error');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    showToast('Error deleting selfie', 'error');
+                });
+            }
+        }
+    </script>
+</body>
+</html> 

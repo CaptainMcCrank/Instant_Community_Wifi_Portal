@@ -29,7 +29,9 @@ local=/localnet/
 address=/selfies.griffincreektrestle.net/{{ wifi_ip }}
 
 # DNS wildcard that redirects everything else to the hotspot
-address=/#/{{ wifi_ip }}
+# NOTE: This is commented out initially to allow external DNS resolution during deployment
+# It will be enabled later in the deployment process via final_cleanup.yml
+#address=/#/{{ wifi_ip }}
 
 # Uncomment if DHCP lease change script is implemented
 #dhcp-script=/usr/local/bin/dnsmasq_dhcp_lease_changed.sh

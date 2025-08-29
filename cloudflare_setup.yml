@@ -3,7 +3,7 @@
   become: yes
   become_user: root
   vars:
-    tunnel_name: "selfie-portal-1750534817"
+    tunnel_name: "selfie-portal-working"
     tunnel_domain: "selfies.griffincreektrestle.net"
   roles:
     - role: cloudflare_tunnel 

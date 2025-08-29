@@ -74,5 +74,8 @@
       timeout: 10000
 
     - name: Create symbolic link for certbot
-      command:
-        cmd: ln -s /snap/bin/certbot /usr/bin/certbot
+      file:
+        src: /snap/bin/certbot
+        dest: /usr/bin/certbot
+        state: link
+        force: yes

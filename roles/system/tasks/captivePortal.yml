@@ -78,6 +78,7 @@
       - devscripts
       - libmicrohttpd-dev
       - debhelper
+      - libjson-c-dev
   tags:
     - nodogsplash
     - streamer

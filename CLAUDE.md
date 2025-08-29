@@ -246,6 +246,80 @@ The validation script `/usr/local/bin/validate-ap.sh` tests:
 
 **Always run this script before and after changes!**
 
+## CRITICAL SECURITY PRINCIPLES
+
+### ⚠️ **NEVER Bypass SSL Certificate Verification**
+- **NEVER use `GIT_SSL_NO_VERIFY=true`** - introduces man-in-the-middle vulnerabilities  
+- **NEVER use `verify_commit: no`** unless absolutely necessary for offline scenarios
+- **NEVER disable SSL verification** to "fix" certificate errors - debug the root cause instead
+
+### SSL Certificate Errors - Proper Debugging Approach
+When encountering SSL certificate errors like:
+```
+SSL: certificate subject name (runner-xyz) does not match target host name 'github.com'
+```
+
+**DO investigate root causes:**
+1. **Check system clock/timezone** - certificates are time-sensitive
+2. **Verify CA certificates** are up to date: `update-ca-certificates`  
+3. **Check for proxy/firewall** interference
+4. **Test direct connectivity**: `curl -v https://github.com`
+5. **Examine network configuration** for DNS/routing issues
+
+**DON'T suppress security errors:**
+- Bypassing SSL creates attack vectors
+- Masks underlying network/configuration problems  
+- Violates security best practices
+- May indicate compromised network infrastructure
+
+### Security-First Troubleshooting
+- **Always debug certificate issues** rather than disable verification
+- **Document root causes** when SSL problems are resolved  
+- **Test network connectivity** before assuming certificate problems
+- **Verify system integrity** if unexpected SSL failures occur
+
+## CRITICAL DNS/NETWORKING DEPLOYMENT SEQUENCING
+
+### ⚠️ **Captive Portal DNS Timing Issue**
+The deployment must carefully sequence DNS configuration to avoid breaking external connectivity during deployment:
+
+**Problem**: The captive portal wildcard redirect `address=/#/10.10.42.1` in dnsmasq redirects **ALL** domains (including github.com) to the local server, breaking:
+- Git repository clones
+- Package downloads
+- External API calls during deployment
+
+**Solution**: Two-phase dnsmasq deployment:
+1. **Phase 1 (Early - dnsmasq.yml)**: Install dnsmasq with normal DNS forwarding, wildcard redirect commented out
+2. **Phase 2 (Late - final_cleanup.yml)**: Enable captive portal wildcard redirect after all external dependencies are downloaded
+
+### DNS Configuration Phasing Details
+```yaml
+# templates/dnsmasq.conf.j2 - Phase 1 configuration
+address=/selfies.griffincreektrestle.net/{{ wifi_ip }}  # Specific redirect OK
+#address=/#/{{ wifi_ip }}  # Wildcard redirect DISABLED initially
+
+# roles/system/tasks/final_cleanup.yml - Phase 2 activation
+- name: Enable captive portal DNS wildcard redirect
+  lineinfile:
+    path: /etc/dnsmasq.conf
+    regexp: '^#address=/#/{{ wifi_ip }}'
+    line: 'address=/#/{{ wifi_ip }}'
+```
+
+### Debugging DNS Issues During Deployment
+```bash
+# Check what DNS server is being used
+cat /etc/resolv.conf
+
+# Test domain resolution
+getent hosts github.com
+
+# Should resolve to GitHub IP, NOT 10.10.42.1 during deployment
+ping -c 1 github.com
+```
+
+**Key Learning**: Captive portal DNS redirects must be the **LAST** step in deployment, after all external dependencies are resolved.
+
 ## TROUBLESHOOTING QUICK REFERENCE
 
 ### WiFi AP Not Working
@@ -453,3 +527,4 @@ grep -q "address=/selfies.griffincreektrestle.net/10.10.42.1" /etc/dnsmasq.conf
 3. **Test nginx configuration after any role modifications**
 4. **Use validation script to catch configuration conflicts early**
 5. **Remove conflicting configurations when found**
+- In this project- we have to install dnsmasq before we install nodogsplash.  Our private dnsmasq configuration that redirects all traffic to the pi cannot be running during any software installation commands because requests to the repositories will get redirected to the pi.  Therefore, we need to have an initial configuration of dnsmasq that enables normal routing without the wildcard redirect.  The installation of the wildcard redirect should only happen during the final cleanup operations after the Cloudflared and Selfie_App roles are completed.

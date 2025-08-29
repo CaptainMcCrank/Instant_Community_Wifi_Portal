@@ -92,7 +92,18 @@ CREDS_FILE="$CREDENTIALS_DIR/$TUNNEL_NAME.json"
 # Ensure credentials directory exists
 mkdir -p "$CREDENTIALS_DIR"
 
-# First try with --credentials-file flag
+# Check if credentials file already exists and is valid
+if [ -f "$CREDS_FILE" ] && python3 -m json.tool "$CREDS_FILE" > /dev/null 2>&1; then
+    echo -e "${GREEN}✓ Existing credentials file is valid, skipping download${NC}"
+    CREDS_SUCCESS=true
+else
+    echo -e "${BLUE}Downloading new credentials...${NC}"
+    CREDS_SUCCESS=false
+fi
+
+# Only download credentials if file does not exist or was invalid
+if [ "${CREDS_SUCCESS:-false}" != "true" ]; then
+    # First try with --credentials-file flag
 echo -e "${BLUE}Trying --credentials-file method...${NC}"
 CREDS_OUTPUT=$(sudo -u pi "$CLOUDFLARED_BINARY" tunnel token --credentials-file "$CREDS_FILE" "$TUNNEL_NAME" 2>&1)
 CREDS_EXIT_CODE=$?
@@ -127,6 +138,7 @@ EOF
         exit 1
     fi
 fi
+fi  # End of credentials download check
 
 # Verify credentials file was created and is valid
 if [ -f "$CREDS_FILE" ]; then

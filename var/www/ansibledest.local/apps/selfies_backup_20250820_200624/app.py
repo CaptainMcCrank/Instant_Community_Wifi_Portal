@@ -80,47 +80,10 @@ def cleanup_old_selfies():
         save_index(updated_index)
 
 def get_client_ip():
-    """Get client IP address, handling proxy headers properly"""
-    # Check for Cloudflare and other proxy headers
-    forwarded_for = request.headers.get('X-Forwarded-For')
-    if forwarded_for:
-        # Take the first IP in the chain (original client)
-        client_ip = forwarded_for.split(',')[0].strip()
-        app.logger.info(f"Client IP from X-Forwarded-For: {client_ip}")
-        return client_ip
-    
-    # Check for other common proxy headers
-    real_ip = request.headers.get('X-Real-IP')
-    if real_ip:
-        app.logger.info(f"Client IP from X-Real-IP: {real_ip}")
-        return real_ip.strip()
-    
-    # Fallback to direct connection IP
-    client_ip = request.remote_addr
-    app.logger.info(f"Client IP from remote_addr: {client_ip}")
-    return client_ip
-
-def get_network_tier():
-    """Determine network access tier based on client IP"""
-    client_ip = get_client_ip()
-    
-    # Full private access (AP WiFi clients and localhost)
-    if (client_ip.startswith('10.10.42.') or 
-        client_ip.startswith('127.') or
-        client_ip == '::1' or
-        client_ip == 'localhost'):
-        app.logger.info(f"IP {client_ip} classified as full_private")
-        return 'full_private'
-    
-    # Semi-public access (wlan0 interface network)
-    elif client_ip.startswith('192.168.6.'):
-        app.logger.info(f"IP {client_ip} classified as semi_public")
-        return 'semi_public'
-    
-    # External access (everything else, likely via Cloudflare tunnel)
-    else:
-        app.logger.info(f"IP {client_ip} classified as external")
-        return 'external'
+    """Get client IP address"""
+    if request.headers.get('X-Forwarded-For'):
+        return request.headers.get('X-Forwarded-For').split(',')[0]
+    return request.remote_addr
 
 @app.route('/')
 @app.route('/selfies/')
@@ -136,11 +99,7 @@ def index():
 @app.route('/upload', methods=['POST'])
 @app.route('/selfies/upload', methods=['POST'])
 def upload_selfie():
-    """Handle selfie upload - PRIVATE ACCESS ONLY"""
-    # Check access tier - only full private users can upload
-    if get_network_tier() != 'full_private':
-        return jsonify({'error': 'Upload not available from your network'}), 403
-    
+    """Handle selfie upload"""
     try:
         # Check if file was uploaded
         if 'selfie' not in request.files:
@@ -249,10 +208,7 @@ def api_selfies():
 @app.route('/delete/<selfie_id>', methods=['POST'])
 @app.route('/selfies/delete/<selfie_id>', methods=['POST'])
 def delete_selfie(selfie_id):
-    """Delete a selfie (admin function) - PRIVATE ACCESS ONLY"""
-    # Check access tier - only full private users can delete
-    if get_network_tier() != 'full_private':
-        return jsonify({'error': 'Delete not available from your network'}), 403
+    """Delete a selfie (admin function)"""
     index_data = load_index()
     selfie = next((s for s in index_data if s.get('id') == selfie_id), None)
     
@@ -273,85 +229,8 @@ def delete_selfie(selfie_id):
 @app.route('/health')
 @app.route('/selfies/health')
 def health_check():
-    """Health check endpoint - PRIVATE ACCESS ONLY"""
-    # Check access tier - only full private users get full health info
-    if get_network_tier() != 'full_private':
-        return jsonify({'error': 'Health endpoint not accessible from your network'}), 403
-    
+    """Health check endpoint"""
     return jsonify({'status': 'healthy', 'timestamp': datetime.now().isoformat()})
-
-def sanitize_selfie_data(selfie):
-    """Remove sensitive data from selfie metadata for public view"""
-    sanitized = selfie.copy()
-    # Remove IP address and other sensitive info
-    sanitized.pop('ip_address', None)
-    sanitized.pop('file_size', None)
-    return sanitized
-
-def get_curated_selfies(limit=10):
-    """Get curated subset of selfies for public viewing"""
-    cleanup_old_selfies()
-    index_data = load_index()
-    
-    # Sort by timestamp, newest first
-    index_data.sort(key=lambda x: x.get('timestamp', ''), reverse=True)
-    
-    # Take a curated subset (for now, just the most recent ones)
-    # Future enhancement: could add quality scoring, filtering, etc.
-    curated = index_data[:limit]
-    
-    # Sanitize the data for public consumption
-    return [sanitize_selfie_data(selfie) for selfie in curated]
-
-# NEW PUBLIC ROUTES
-
-@app.route('/gallery')
-@app.route('/public')
-def public_gallery():
-    """Public read-only gallery with Griffin Creek Trestle theme"""
-    tier = get_network_tier()
-    
-    # Allow semi-public and external access to gallery
-    if tier == 'full_private':
-        # Redirect private users to full functionality
-        return redirect('/')
-    
-    # Get curated selfies for public viewing
-    curated_selfies = get_curated_selfies(limit=15)
-    
-    return render_template('public_gallery.html', 
-                         selfies=curated_selfies,
-                         network_tier=tier)
-
-@app.route('/api/public/selfies')
-def public_api_selfies():
-    """API endpoint for curated public selfies"""
-    tier = get_network_tier()
-    
-    # Allow semi-public and external access
-    if tier not in ['semi_public', 'external']:
-        return jsonify({'error': 'Use /api/selfies for full access'}), 403
-    
-    curated_selfies = get_curated_selfies(limit=20)
-    return jsonify(curated_selfies)
-
-@app.route('/status')
-def sanitized_health():
-    """Sanitized health check for semi-public access"""
-    tier = get_network_tier()
-    
-    # Block external access, allow semi-public and private
-    if tier == 'external':
-        return jsonify({'error': 'Status not accessible from external networks'}), 403
-    
-    # Return sanitized health info
-    return jsonify({
-        'status': 'healthy',
-        'service': 'Griffin Creek Trestle Selfie Portal',
-        'timestamp': datetime.now().isoformat(),
-        'gallery_active': True,
-        'network_tier': tier
-    })
 
 if __name__ == '__main__':
     # Use threaded=True for better handling of multiple requests

@@ -60,7 +60,41 @@
      
    # Note: Hostname changes moved to post_tasks in run.yml to ensure
    # they happen AFTER cloudflare_tunnel and selfie_app roles complete
+
+   - name: Enable captive portal DNS wildcard redirect (after all external dependencies downloaded)
+     lineinfile:
+       path: /etc/dnsmasq.conf
+       regexp: '^#address=/#/{{ wifi_ip }}'
+       line: 'address=/#/{{ wifi_ip }}'
+       backup: yes
+     notify: restart dnsmasq
+     tags: 
+       - captive_portal
+       - dns_redirect
   
+  
+   - name: Install & configure device registration scripts
+     block: 
+
+      - name: Copy systemd timers & services files for device registration
+        become_user: pi
+        copy:
+          src: "{{ root_playbook_dir }}/pi/config/systemd"
+          dest: /home/pi/.config/
+          mode: 0700
+          owner: pi
+        tags: 
+        - DeviceRegistration
+
+      - name: enable device registration service so it launches after reboot
+        become_user: pi
+        command: systemctl --user enable register-device.service # no now switch because I don't want to run it
+        tags: DeviceRegistration
+
+      - name: enable device registration timer so it launches after reboot
+        become_user: pi
+        command: systemctl --user enable register-device.timer
+        tags: DeviceRegistration
 
 
 

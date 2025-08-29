@@ -38,6 +38,17 @@
   register: remote_credentials_check
   tags: [cloudflare_auth, cloudflare]
 
+- name: Check if credentials file exists at standard location (fallback check)
+  stat:
+    path: "/home/{{ cloudflare_tunnel.user }}/.cloudflared/{{ cloudflare_tunnel.name }}.json"
+  register: standard_credentials_check
+  tags: [cloudflare_auth, cloudflare]
+
+- name: Set credentials exists flag based on either location
+  set_fact:
+    credentials_exist: "{{ remote_credentials_check.stat.exists or standard_credentials_check.stat.exists }}"
+  tags: [cloudflare_auth, cloudflare]
+
 - name: Download cloudflared binary
   get_url:
     url: "{{ cloudflare_tunnel.binary_url }}"
@@ -85,7 +96,7 @@
   when: 
     - origin_cert_check.stat.exists
     - existing_tunnel_check.stdout | length > 0
-    - "'{{ cloudflare_tunnel.name }}' in existing_tunnel_check.stdout"
+    - "cloudflare_tunnel.name in existing_tunnel_check.stdout"
   tags: [cloudflare_cleanup, cloudflare]
 
 - name: Stop and disable old tunnel services
@@ -95,21 +106,7 @@
     enabled: no
   failed_when: false
   loop:
-    - "cloudflared@selfie-portal-1750534817.service"
-    - "cloudflared@selfie-portal-new.service"
     - "cloudflared@thepub-selfie-portal.service"
-  tags: [cloudflare_cleanup, cloudflare]
-
-- name: Remove old tunnel credential files
-  file:
-    path: "/home/{{ cloudflare_tunnel.user }}/.cloudflared/{{ item }}"
-    state: absent
-  failed_when: false
-  loop:
-    - "selfie-portal-1750534817.json"
-    - "de080d67-cd70-4ba0-b785-caaaaf86d104.json"
-    - "3fce67f6-1d3b-4ef4-b2de-1297ec9d08f5.json"
-    - "c5735772-fdfc-4b2a-88ab-0805ddfa7b6a.json"
   tags: [cloudflare_cleanup, cloudflare]
 
 - name: Display tunnel cleanup status
@@ -118,10 +115,10 @@
       🧹 Tunnel Cleanup Status:
       {% if existing_tunnel_check.stdout | length > 0 %}
       ✓ Found existing tunnel '{{ cloudflare_tunnel.name }}' - deleted for fresh start
-      ✓ Stopped old tunnel services and cleaned up credential files
+      ✓ Stopped old tunnel services
       {% else %}
       ✓ No existing tunnel '{{ cloudflare_tunnel.name }}' found - ready for creation
-      ✓ Cleaned up any old tunnel services and credential files
+      ✓ Cleaned up any old tunnel services
       {% endif %}
   when: origin_cert_check.stat.exists
   tags: [cloudflare_cleanup, cloudflare]
@@ -631,7 +628,7 @@
   failed_when: tunnel_creation_result.rc != 0
   when: 
     
-    - not remote_credentials_check.stat.exists
+    - not (credentials_exist | default(false))
     - not (tunnel_exists | default(false))
   become: true
   become_user: "{{ cloudflare_tunnel.user }}"
@@ -720,9 +717,9 @@
       TUNNEL CREATION SCRIPT DEBUG
       ========================================
       
-      Return code: {{ tunnel_creation_result.rc }}
-      Stdout: {{ tunnel_creation_result.stdout }}
-      Stderr: {{ tunnel_creation_result.stderr }}
+      Return code: {{ tunnel_creation_result.rc | default('undefined') }}
+      Stdout: {{ tunnel_creation_result.stdout | default('undefined') }}
+      Stderr: {{ tunnel_creation_result.stderr | default('undefined') }}
   when: 
     
     - not remote_credentials_check.stat.exists
@@ -745,6 +742,7 @@
     - not remote_credentials_check.stat.exists
     - not (tunnel_exists | default(false))
     - tunnel_creation_result is defined
+    - tunnel_creation_result.rc is defined
     - tunnel_creation_result.rc == 0
   tags: [cloudflare_auth, cloudflare]
 
@@ -763,6 +761,7 @@
     - not remote_credentials_check.stat.exists
     - tunnel_exists | default(false)
     - tunnel_creation_result is defined
+    - tunnel_creation_result.rc is defined
     - tunnel_creation_result.rc == 0
   tags: [cloudflare_auth, cloudflare]
 
@@ -780,6 +779,7 @@
     - not remote_credentials_check.stat.exists
     - tunnel_exists | default(false)
     - tunnel_creation_result is defined
+    - tunnel_creation_result.rc is defined
     - tunnel_creation_result.rc != 0
   tags: [cloudflare_auth, cloudflare]
 
@@ -806,10 +806,10 @@
       ⚠ Credentials file not found. This may indicate an issue with the tunnel setup.
       {% endif %}
       
-      {% if tunnel_creation_result is defined %}
+      {% if tunnel_creation_result is defined and tunnel_creation_result.rc is defined %}
       Script exit code: {{ tunnel_creation_result.rc }}
       {% else %}
-      Script was not executed (task was skipped)
+      Script was not executed or has no return code (task was skipped)
       {% endif %}
   when: 
     
@@ -830,6 +830,7 @@
     
     - not remote_credentials_check.stat.exists
     - tunnel_creation_result is defined
+    - tunnel_creation_result.rc is defined
     - tunnel_creation_result.rc != 0
     - post_script_credentials_check.stat.exists
   tags: [cloudflare_auth, cloudflare]
@@ -1090,7 +1091,7 @@
     replace: "tunnel: {{ cloudflare_tunnel.name }}-new"
   when:
     - new_tunnel_creation is defined
-    - new_tunnel_creation.rc == 0
+    - new_tunnel_creation is succeeded
   notify: restart cloudflared
   tags: [cloudflare]
 
@@ -1101,7 +1102,7 @@
     replace: "credentials-file: /home/{{ cloudflare_tunnel.user }}/.cloudflared/{{ cloudflare_tunnel.name }}-new.json"
   when:
     - new_tunnel_creation is defined
-    - new_tunnel_creation.rc == 0
+    - new_tunnel_creation is succeeded
   notify: restart cloudflared
   tags: [cloudflare]
 
@@ -1198,6 +1199,7 @@
       🔧 To get the correct tunnel ID, run:
       sudo -u {{ cloudflare_tunnel.user }} {{ cloudflare_tunnel.binary_path }} tunnel list
       
+      {% endif %}
   when: service_status_check.status.ActiveState == 'active'
   tags: [cloudflare]
 
