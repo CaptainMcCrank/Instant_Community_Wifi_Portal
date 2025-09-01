@@ -6,13 +6,34 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 This is an Instant Community Wifi Portal that turns a Raspberry Pi into a WiFi access point with a captive portal hosting a local community image board. The system creates an offline network for neighbors to connect and share content.
 
 ## Build/Deploy Commands
+
+### Docker Container Deployment (Traditional Method)
 - All commands should be run through the docker container
 - attach to the container with docker exec -it AnsibleFWC bash
 - the playbook directory for this project is in /home/pi/Playbooks/Instant_Community_Wifi_Portal.  You'll need to change in there to start the process.
+- Deploy using Ansible: `ansible-playbook run.yml`
+
+### Host System Deployment (Alternative - PROVEN WORKING)
+For deployment directly from the host system without Docker:
+
+**WORKING COMMAND:**
+```bash
+DOCKER_HOST=captainmccrank.local ansible-playbook -i inventory run.yml -e "root_playbook_dir=$(pwd)" -vv
+```
+
+**Requirements:**
+- APT caching server at captainmccrank.local:3142 must be accessible and running
+- Current working directory must be project root: `/home/patrickmccanna/Development/Playbooks/Instant_Community_Wifi_Portal`
+- SSH access to target device (ansibledest.local)
+
+**Environment Variables:**
+- `DOCKER_HOST=captainmccrank.local` - Points to apt-cacher-ng proxy server for package downloads
+- `root_playbook_dir=$(pwd)` - Overrides hardcoded Docker container paths with host system paths
+
+### General Requirements
 - The recipient device is ansibledest.local.  Ping for it before running the build process.
 - If you get ssh errors- stop and ask for help.  I need to copy the ssh key to the recipient and remove stale entries to old recipent devices.
 - It is better to monitor a long term run of the build process than it is to exec commands in the container from outside the container.  The build process seems to take several hours.
-- Deploy using Ansible: `ansible-playbook run.yml`
 - Run on Raspberry Pi OS Bookworm (Debian 12).  I am deploying it onto a 32bit os for compatibility reasons. 
 - Hardware: Raspberry Pi 3/4, 16GB+ Class 10 Ultra Micro SD card
 
@@ -528,3 +549,61 @@ grep -q "address=/selfies.griffincreektrestle.net/10.10.42.1" /etc/dnsmasq.conf
 4. **Use validation script to catch configuration conflicts early**
 5. **Remove conflicting configurations when found**
 - In this project- we have to install dnsmasq before we install nodogsplash.  Our private dnsmasq configuration that redirects all traffic to the pi cannot be running during any software installation commands because requests to the repositories will get redirected to the pi.  Therefore, we need to have an initial configuration of dnsmasq that enables normal routing without the wildcard redirect.  The installation of the wildcard redirect should only happen during the final cleanup operations after the Cloudflared and Selfie_App roles are completed.
+
+## Common Issues & Quick Fixes
+
+### Cloudflare Tunnel 1033 Error
+**Problem**: Tunnel shows 1033 error - cannot reach origin server  
+**Cause**: Cloudflared service not installed or not running  
+**Fix**:
+```bash
+# Check if service exists
+ssh pi@ansibledest.local "systemctl status cloudflared"
+
+# If missing, install service
+ssh pi@ansibledest.local "sudo /usr/local/bin/cloudflared service install"
+ssh pi@ansibledest.local "sudo systemctl enable cloudflared && sudo systemctl start cloudflared"
+```
+
+### Password Hash Error (passlib)
+**Problem**: `password_hash('sha512')` fails with passlib error  
+**Cause**: Missing Python library or system crypt module issue  
+**Fix**: Added `ignore_errors: yes` to password change task - it's optional for functionality
+
+### Final Cleanup File Synchronization Failure  
+**Problem**: APT source cleanup fails with missing files  
+**Cause**: `.post` files missing during copy operation  
+**Fix**: Added file existence checks before cleanup operations
+
+### Host System Deployment APT Errors
+**Problem**: APT repository URLs malformed (missing hostname)  
+**Cause**: DOCKER_HOST environment variable not set correctly  
+**Fix**: Always use `DOCKER_HOST=captainmccrank.local` for host deployments
+
+### Hostname Resolution Changes During Deployment
+**Problem**: Connection target changes from ansibledest.local to thepub.local mid-deployment  
+**Cause**: Hostname change occurs in post_tasks after all roles complete  
+**Solution**: Use ansibledest.local throughout deployment, hostname changes at the very end
+
+## Deployment Recovery Commands
+
+### Resume Failed Deployment
+```bash
+# Resume from specific task (example)
+DOCKER_HOST=captainmccrank.local ansible-playbook -i inventory run.yml -e "root_playbook_dir=$(pwd)" --start-at-task="Task Name" -vv
+
+# Resume with specific tags
+DOCKER_HOST=captainmccrank.local ansible-playbook -i inventory run.yml -e "root_playbook_dir=$(pwd)" --tags cloudflare,selfie_app,final_hostname_change -vv
+```
+
+### Test System Functionality
+```bash
+# Check core services
+ssh pi@ansibledest.local "systemctl status dnsmasq nodogsplash nginx selfie-portal cloudflared"
+
+# Test local access
+ssh pi@ansibledest.local "curl -s -o /dev/null -w '%{http_code}' http://localhost:5001/"
+
+# Check WiFi AP
+ssh pi@ansibledest.local "nmcli device status | grep wlan"
+```

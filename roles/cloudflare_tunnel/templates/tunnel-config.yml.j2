@@ -1,0 +1,7 @@
+tunnel: {{ tunnel_id | default(tunnel_uuid.stdout) }}
+credentials-file: /home/pi/.cloudflared/{{ tunnel_id | default(tunnel_uuid.stdout) }}.json
+
+ingress:
+  - hostname: {{ tunnel_domain | default('selfies.griffincreektrestle.net') }}
+    service: http://localhost:5001
+  - service: http_status:404

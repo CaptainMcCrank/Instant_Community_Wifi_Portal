@@ -727,6 +727,72 @@
     - tunnel_creation_result is defined
   tags: [cloudflare_auth, cloudflare]
 
+# Service installation and configuration tasks
+- name: Extract tunnel ID for service configuration
+  set_fact:
+    extracted_tunnel_id: "{{ tunnel_creation_result.stdout | regex_search('tunnel.*with id ([a-f0-9-]+)', '\\1') | first | default('') }}"
+  when: 
+    - tunnel_creation_result is defined
+    - tunnel_creation_result.stdout is defined
+  tags: [cloudflare_service]
+
+- name: Create tunnel configuration file
+  template:
+    src: tunnel-config.yml.j2
+    dest: /etc/cloudflared/config.yml
+    owner: root
+    group: root
+    mode: '0600'
+  vars:
+    tunnel_id: "{{ extracted_tunnel_id | default(tunnel_uuid.stdout) }}"
+  when: extracted_tunnel_id is defined and extracted_tunnel_id != ''
+  become: true
+  tags: [cloudflare_service]
+
+- name: Install cloudflared system service
+  command: /usr/local/bin/cloudflared service install
+  register: service_install_result
+  changed_when: service_install_result.rc == 0
+  failed_when: false
+  become: true
+  tags: [cloudflare_service]
+
+- name: Enable and start cloudflared service
+  systemd:
+    name: cloudflared
+    enabled: yes
+    state: started
+    daemon_reload: yes
+  become: true
+  ignore_errors: yes
+  tags: [cloudflare_service]
+
+- name: Verify cloudflared service status
+  systemd:
+    name: cloudflared
+  register: cloudflared_service_status
+  become: true
+  tags: [cloudflare_service]
+
+- name: Display service installation result
+  debug:
+    msg: |
+      ========================================
+      CLOUDFLARED SERVICE STATUS
+      ========================================
+      
+      Service Installation: {{ 'SUCCESS' if service_install_result.rc == 0 else 'FAILED' }}
+      Service Status: {{ cloudflared_service_status.status.ActiveState | default('unknown') }}
+      
+      {% if cloudflared_service_status.status.ActiveState == 'active' %}
+      ✅ Cloudflared tunnel service is running!
+      {% else %}
+      ⚠️  Service may need manual intervention
+      Check with: systemctl status cloudflared
+      {% endif %}
+  when: service_install_result is defined
+  tags: [cloudflare_service]
+
 - name: Display tunnel creation success
   debug:
     msg: |
