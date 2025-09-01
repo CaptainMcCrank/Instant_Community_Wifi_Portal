@@ -13,37 +13,199 @@
        when: selfie_app_enabled | default(true)
    
    post_tasks:
-     - name: Copy avahi configuration (after hostname setup)
-       copy:
-         src: "{{ playbook_dir }}/etc/avahi/avahi-daemon.conf"
-         dest: /etc/avahi/avahi-daemon.conf
-         owner: root
-         group: root
-         mode: '0644'
-       tags: final_hostname_change
-         
-     - name: Set final hostname (after all roles complete)
-       ansible.builtin.hostname:
-         name: "{{ hostname }}"
-       tags: final_hostname_change
-     
-     - name: Update /etc/hosts with final hostname
-       lineinfile:
-         path: /etc/hosts
-         backrefs: yes
-         regexp: '^(127.0.0.1\tlocalhost)(\s+.*|$)'
-         line: '\1 {{ hostname }}'
-       tags: final_hostname_change
-     
-     - name: Append /etc/hosts file with WiFi IP mapping
-       lineinfile:
-         path: /etc/hosts
-         line: '{{ wifi_ip }} {{ hostname }} {{ hostname }}'
-       tags: final_hostname_change
-     
-     - name: Restart avahi-daemon after config and hostname changes
-       systemd:
-         name: avahi-daemon
-         state: restarted
-       tags: final_hostname_change
+
+     - name: Tune the hostname
+       block: 
+        - name: Copy avahi configuration (after hostname setup)
+          copy:
+            src: "{{ playbook_dir }}/etc/avahi/avahi-daemon.conf"
+            dest: /etc/avahi/avahi-daemon.conf
+            owner: root
+            group: root
+            mode: '0644'
+          tags: final_hostname_change
+            
+        - name: Set final hostname (after all roles complete)
+          ansible.builtin.hostname:
+            name: "{{ hostname }}"
+          tags: final_hostname_change
+        
+        - name: Update /etc/hosts with final hostname
+          lineinfile:
+            path: /etc/hosts
+            backrefs: yes
+            regexp: '^(127.0.0.1\tlocalhost)(\s+.*|$)'
+            line: '\1 {{ hostname }}'
+          tags: final_hostname_change
+        
+        - name: Append /etc/hosts file with WiFi IP mapping
+          lineinfile:
+            path: /etc/hosts
+            line: '{{ wifi_ip }} {{ hostname }} {{ hostname }}'
+          tags: final_hostname_change
+  
+     - name: Install & configure device registration scripts
+       block: 
+
+       - name: Copy systemd timers & services files for device registration
+         become_user: pi
+         copy:
+           src: "{{ root_playbook_dir }}/pi/config/systemd"
+           dest: /home/pi/.config/
+           mode: 0700
+           owner: pi
+         tags: 
+         - DeviceRegistration
+
+       - name: enable device registration service so it launches after reboot
+         become_user: pi
+         command: systemctl --user enable register-device.service # no now switch because I don't want to run it
+         tags: DeviceRegistration
+
+       - name: enable device registration timer so it launches after reboot
+         become_user: pi
+         command: systemctl --user enable register-device.timer
+         tags: DeviceRegistration
+
+     - name: Resize File System Block
+       block:
+         - name: Synchronization of resize2fs_once
+           ansible.builtin.copy: 
+             src: "{{ root_playbook_dir }}/etc/init.d/resize2fs_once"
+             dest: /etc/init.d/resize2fs_once
+             owner: root
+             group: root
+             mode: 0755
+             when: cleanup_files_exist.stat.exists
+  
+         - name: add quiet init=/usr/lib/raspi-config/init_resize.sh to /boot/cmdline.txt
+           lineinfile:
+             path: /boot/cmdline.txt
+             line: quiet init=/usr/lib/raspi-config/init_resize.sh
+             insertafter: EOF
+           tags: os_config_files
+  
+         - name: sudo systemctl enable resize2fs_once
+           command: systemctl enable resize2fs_once
+           tags: os_config_files
+
+
+     - name: Firewalling Block
+       block:
+         - name: Install ufw
+           apt:
+             name: ufw
+             state: present
+             update_cache: true
+             
+         ## //TODO: Make sure that the wifi_interface variable is wlan1 in this case.  
+         ## we want to make sure SSH is allowed on the wlan0 interface
+         - name: Block SSH on WiFi interface
+           command: ufw deny in on {{ wifi_interface }}
+           
+         - name: Allow SSH on Ethernet interface
+           command: ufw allow in on eth0 to any port 22
+       #   - name: Allow 80 & 443 on Wlan interface
+       #     command: ufw allow in on wlan0 to any port 80,443
+         - name: Allow HTTP and HTTPS on Ethernet and wifi interface
+           ufw:
+             rule: allow
+             src: any
+             interface: "{{ item }}"
+             direction: in
+             port: 53,80,443,8000
+             proto: tcp
+             state: enabled
+           loop:
+             - eth0
+             - "{{ wifi_interface }}"
+         - name: Allow DNS
+           ufw:
+             rule: allow
+             src: any
+             interface: "{{ wifi_interface }}"
+             direction: in
+             port: '53'
+             proto: udp
+             state: enabled
+       # This should get inverted when builds are finally proven to work.  
+         - name: Disable UFW
+           command: ufw --force disable
+
+     - name: Apt Cleanup Block
+       block:
+         - name: Synchronization of files for resetting sources
+           ansible.builtin.copy: 
+             src: "{{ root_playbook_dir }}/etc/apt"
+             dest: /tmp/
+           when: cleanup_files_exist.stat.exists
+
+         - name: final cleanup /etc/apt/sources.list
+           command: mv /tmp/apt/sources.list.post /etc/apt/sources.list
+           when: cleanup_files_exist.stat.exists
+           tags: AnsibleHousekeeping 
+
+         - name: final cleanup /etc/apt/sources.list.d/raspi.list
+           command: mv /tmp/apt/sources.list.d/raspi.list.post /etc/apt/sources.list.d/raspi.list
+           when: cleanup_files_exist.stat.exists
+           tags: AnsibleHousekeeping 
+
+
+  
+     - name: Final Cleanup
+       block:
+
+        - name: Check if cleanup files exist
+          stat:
+            path: "{{ root_playbook_dir }}/etc/apt/sources.list.post"
+          register: cleanup_files_exist
+          tags: AnsibleHousekeeping
+
+
+      # rpi removed this code for some reason.  I had to pull it over.
+      #   - name: wget the Filesystem resizer
+      #     command: wget -O /etc/init.d/resize2fs_once https://raw.githubusercontent.com/RPi-Distro/pi-gen/master/stage2/01-sys-tweaks/files/resize2fs_once
+      #     tags: AnsibleHousekeeping 
+
+        - name: Change password for user pi
+          user:
+            name: pi
+            password: "{{ new_password | password_hash('sha512') }}"
+            ignore_errors: yes
+          tags: optional_security
+
+        - name: Clear the log files! 
+          command: bash -c "/usr/local/bin/ClearLogs.sh"
+          tags: 
+          - os_config_files
+          - AnsibleHousekeeping
+
+        #   - name: Enable UFW //todo: IMPORTANT: reenable this
+        #     command: ufw --force enable
+
+        - name: Enable captive portal DNS wildcard redirect (after all external dependencies downloaded
+          lineinfile:
+            path: /etc/dnsmasq.conf
+            regexp: '^#address=/#/{{ wifi_ip }}'
+            line: 'address=/#/{{ wifi_ip }}'
+            backup: yes
+          notify: restart dnsmasq
+          tags: 
+            - captive_portal
+            - dns_redirect
+        
+        - name: Copy /etc/hosts file (hostname will be set later in post_tasks)
+          copy:
+            src: "{{ root_playbook_dir }}/etc/hosts"
+            dest: /etc/hosts
+            owner: root
+            group: root
+            mode: 0755
+          tags: os_config_files
+          
+        - name: Restart avahi-daemon after config and hostname changes
+          systemd:
+            name: avahi-daemon
+            state: restarted
+          tags: final_hostname_change
    

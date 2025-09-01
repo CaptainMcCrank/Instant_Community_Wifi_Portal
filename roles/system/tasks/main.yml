@@ -12,8 +12,6 @@
 - import_tasks: nodogsplash_selfie_integration.yml
 # - import_tasks: streamer.yml 
 - import_tasks: InstantCommunityWifiPortal.yml
-- import_tasks: firewall.yml
 - import_tasks: chromium.yml
 - import_tasks: sslcert.yml
 - import_tasks: validation_tests.yml
-- import_tasks: final_cleanup.yml

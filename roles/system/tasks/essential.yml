@@ -215,6 +215,38 @@
           update_cache: true
         tags: os_config_files
 
+   - name: Troubleshooting Tools Installation
+     block:
+      - name: Install essential network troubleshooting tools
+        apt:
+          name: "{{item}}"
+          state: present
+          update_cache: true
+        loop:
+            - dnsutils        # dig, nslookup - DNS debugging
+            - tcpdump         # Network packet capture
+            - iftop           # Network bandwidth monitoring
+            - tree            # Directory structure visualization
+            - iotop           # I/O monitoring
+            - jq              # JSON processor
+            - httpie          # User-friendly HTTP client
+        tags: 
+        - troubleshooting_tools
+        - AnsibleHousekeeping
+        
+      - name: Install additional system monitoring tools
+        apt:
+          name: "{{item}}"
+          state: present
+          update_cache: true
+        loop:
+            - mtr-tiny        # Network diagnostic tool
+            - nmap            # Network mapper
+            - tmux            # Terminal multiplexer
+        tags: 
+        - troubleshooting_tools
+        - AnsibleHousekeeping
+
       - name: Create /etc/environment file for setting system-wide environment variables
         copy:
           src: "{{ root_playbook_dir }}/etc/environment"
@@ -354,8 +386,6 @@
 
    - name: Install & configure device version file
      block: 
-
-
       - name: Copy /usr/local/etc/ files over to target *currently this is the hotspot version file*
         ansible.builtin.copy:
           src: "{{ root_playbook_dir }}/usr/local/etc/device.ver"
